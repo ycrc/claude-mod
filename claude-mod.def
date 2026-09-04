@@ -1,0 +1,62 @@
+Bootstrap: docker
+From: rockylinux:9
+
+%files
+    etc/managed-settings.json /etc/claude-code/managed-settings.json
+    etc/CLAUDE.md /etc/claude-code/CLAUDE.md
+    etc/yum.repos.d/claude-code.repo /etc/yum.repos.d
+
+%environment
+    # The cluster/module administrator controls upgrades by rebuilding
+    # the image rather than allowing in-container self-updates.
+    # TODO: Added these to managed settings, make sure they work
+    # export DISABLE_UPDATES=1
+    # export DISABLE_INSTALLATION_CHECKS=1
+
+%runscript
+    exec /usr/bin/claude "$@"
+
+%post
+    set -eux
+
+    # Install runtime utilities required by Claude Code.
+    dnf install -y \
+        vim \
+        git \
+        openssh-clients \
+        ca-certificates \
+        munge-libs
+
+    # Install Claude Code. The binary is installed at /usr/bin/claude.
+    # For permissions, a Read deny also applies to Edit and Write, but only after
+    # 2.1.228, so ensure a floor on the release
+    dnf install -y "claude-code >= 2.1.228"
+
+    # Remove package-manager caches to reduce the final image size.
+    dnf clean all
+    rm -rf /var/cache/dnf
+
+    # Create the slurm user account to mirror the clusters'
+    groupadd --system --gid 666 slurm
+    useradd \
+        --system \
+        --uid 666 \
+        --gid slurm \
+        --home-dir /var/lib/slurm \
+        --shell /sbin/nologin \
+        --no-create-home \
+        slurm
+
+%test
+    test -x /usr/bin/claude
+    test -f /etc/claude-code/managed-settings.json
+    test -f /etc/claude-code/CLAUDE.md
+    getent passwd slurm
+    test -e /usr/lib64/libmunge.so.2
+
+    /usr/bin/claude --version
+
+%labels
+    Author YCRC
+    Description Claude Code container for cluster use
+    BaseImage rockylinux:9

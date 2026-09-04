@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  "sandbox": {
+    "enabled": false
+  },
+
+  "permissions": {
+    "defaultMode": "auto",
+    "disableBypassPermissionsMode": "disable",
+
+    "allow": [
+
+      "Bash(jobstats:*)",
+      "Bash(getquota:*)",
+      "Bash(mydirectories:*)",
+
+      "Bash(conda list:*)",
+      "Bash(conda env list:*)",
+      "Bash(conda info:*)",
+      "Bash(conda env export:*)",
+      "Bash(conda activate:*)",
+      "Bash(conda deactivate:*)",
+
+      "Bash(module avail:*)",
+      "Bash(module list:*)",
+      "Bash(module spider:*)",
+      "Bash(module show:*)",
+      "Bash(module load:*)",
+      "Bash(ml:*)",
+      "Bash(module swap:*)",
+      "Bash(module reset:*)",
+      "Bash(module purge:*)",
+      
+      "Bash(squeue:*)",
+      "Bash(sacct:*)",
+      "Bash(sinfo:*)"
+
+    ],
+    "ask":[ 
+
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(find * -delete)",
+      "Bash(find * -exec rm *)",
+      "Bash(find * -exec mv *)",
+
+      "Bash(chmod:*)",
+      "Bash(chgrp:*)",
+      "Bash(chown:*)",
+      "Bash(setfacl:*)",
+
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(rsync:*)",
+      "Bash(scp:*)",
+      "Bash(globus:*)",
+      "Bash(ssh:*)",
+
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "Bash(killall:*)",
+
+      "Bash(tmux:*)",
+      "Bash(screen:*)",
+
+      "Bash(conda remove:*)",
+      "Bash(conda env remove:*)",
+
+      "Bash(git push:*)",
+
+      "Bash(sbatch:*)",
+      "Bash(salloc:*)",
+      "Bash(srun:*)"
+ 
+    ],
+
+    "deny": [
+      "Read(//**/.env)",
+      "Read(//**/.env.*)",
+      "Read(//**/.env.local)",
+      "Read(//**/.envrc)",
+      "Read(//**/.ssh/**)",
+      "Read(//**/.netrc)",
+      "Read(//**/.gitconfig)",
+      "Read(//**/.bash_history)",
+      "Read(//**/.python_history)",
+      "Read(//**/*credentials*)",
+      "Read(//**/*secret*)",
+      "Read(//**/*_token)",
+      "Read(//**/*.token)",
+      "Read(//**/token)",
+      "Read(//**/*api_token*)",
+      "Read(//**/*.pem)",
+      "Read(//**/*.key)",
+      "Read(//**/.aws/**)",
+      "Read(//**/.config/gcloud/**)",
+      "Read(//**/.kube/**)",
+      "Read(//**/.Renviron)",
+      "Read(//**/id_rsa*)",
+      "Read(//**/id_ed25519*)",
+      "Read(//**/id_ecdsa*)",
+      "Read(//**/id_dsa*)",
+      "Read(//**/.pgpass)",
+      "Read(//**/.my.cnf)",
+      "Read(//**/.pypirc)",
+      "Read(//**/.npmrc)",
+      "Read(//**/.docker/config.json)",
+      "Read(//**/.azure/**)",
+      "Edit(//**/*credentials*)",
+      "Edit(//**/*secret*)",
+      "Edit(//**/*api_token*)",
+      "Read(//**/*.ngc)",
+      "Read(//**/.ncbi/**)",
+      "Read(//**/.globus*/**)",
+      "Read(//**/.irods/**)",
+
+      "Bash(apptainer:*)",
+      "Bash(singularity:*)",
+
+      "Bash(sudo:*)",
+      "Bash(su:*)",
+      "Bash(shutdown:*)",
+      "Bash(reboot:*)",
+      "Bash(mkfs:*)",
+      "Bash(fdisk:*)",
+      "Bash(mount:*)",
+      "Bash(umount:*)",
+      "Bash(dd:*)",
+      "Bash(crontab:*)",
+
+      "Bash(sshpass:*)",
+      "Bash(nc:*)",
+      "Bash(ncat:*)",
+      "Bash(netcat:*)",
+      "Bash(nmap:*)",
+      "Bash(telnet:*)",
+      "Bash(ftp:*)",
+
+      "Bash(scancel:*)",
+      "Bash(sacctmgr:*)",
+      "Bash(scontrol:*)",
+      "Bash(scrontab:*)"
+    ]
+  },
+
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_UPDATES": "1",
+    "DISABLE_INSTALLATION_CHECKS": "1",
+    "DISABLE_DOCTOR_COMMAND": "1"
+  }
+}

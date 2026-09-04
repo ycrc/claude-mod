@@ -1,0 +1,57 @@
+easyblock = 'Binary'
+
+name = 'claude'
+version = '{VERSION}'
+
+homepage = 'https://docs.anthropic.com/en/docs/claude-code'
+description = """Claude Code packaged in an Apptainer container for cluster use."""
+
+toolchain = SYSTEM
+
+# Place all files in the EasyBuild source directory. The Binary easyblock
+# copies them into %(installdir)s without extracting them.
+sources = [
+    'claude-mod.sif',
+    'claude-wrapper.sh',
+    'claude-bind.conf',
+    'claude-path.conf',
+    'claude-exclude.conf',
+    'claude-env.conf',
+]
+
+checksums = [
+
+]
+
+# Keep the editable source wrapper and install an executable copy named
+# "claude", which is the command exposed by the module.
+postinstallcmds = [
+    'install -m 0755 %(installdir)s/claude-wrapper.sh %(installdir)s/claude',
+    'chmod 0644 %(installdir)s/claude-bind.conf',
+    'chmod 0644 %(installdir)s/claude-path.conf',
+    'chmod 0644 %(installdir)s/claude-exclude.conf',
+    'chmod 0644 %(installdir)s/claude-env.conf',
+]
+
+modextrapaths = {
+    'PATH': '.',
+}
+
+sanity_check_paths = {
+    'files': [
+        'claude-mod.sif',
+        'claude-wrapper.sh',
+        'claude-bind.conf',
+        'claude-path.conf',
+        'claude-exclude.conf',
+        'claude-env.conf',
+        'claude',
+    ],
+    'dirs': [],
+}
+
+modloadmsg = '\nRun Claude Code on YCRC Clusters with safer defaults.\n'
+modloadmsg += '\nAllocate a compute node before running.\n'
+modloadmsg += '\nStart in a non-hidden subdirectory of your home, project, or scratch space.'
+
+moduleclass = 'devel'
