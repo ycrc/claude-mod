@@ -1,0 +1,16 @@
+{
+  "providers": {
+    "bouchet": {
+      "baseUrl": "http://a1127u31n01.mghpcc.ycrc.yale.edu:8008/v1",
+      "api": "openai-completions",
+      "apiKey": "$YCRC_PI_API_KEY",
+      "models": [
+        {
+          "id": "Qwen3.8-27B",
+          "contextWindow": 262000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,115 @@
+Bootstrap: docker
+From: rockylinux:9
+
+%files
+    etc/managed-settings.json /etc/claude-code/managed-settings.json
+    AGENTS.md /etc/agents/AGENTS.md
+    etc/agents/skills /etc/agents/skills
+    etc/yum.repos.d/claude-code.repo /etc/yum.repos.d
+
+%environment
+    # The cluster/module administrator controls upgrades by rebuilding
+    # the image rather than allowing in-container self-updates.
+    # TODO: Added these to managed settings, make sure they work
+    # export DISABLE_UPDATES=1
+    # export DISABLE_INSTALLATION_CHECKS=1
+
+%runscript
+    echo "Use the module-provided claude, codex, copilot, or pi launcher." >&2
+    exit 2
+
+%post
+    set -eux
+
+    # Copilot CLI requires Node.js 22+. Select the Rocky 9 AppStream Node 22 stream
+    # before installing the shared runtime utilities.
+    dnf module reset -y nodejs
+    dnf module enable -y nodejs:22
+
+    # Install EPEL so Pi can use fd and ripgrep without attempting runtime
+    # downloads during harness startup. Bouchet itself has Internet access.
+    dnf install -y epel-release
+
+    # Install runtime utilities required by the coding agents.
+    dnf install -y \
+        vim \
+        bubblewrap \
+        fd-find \
+        ripgrep \
+        git \
+        openssh-clients \
+        ca-certificates \
+        munge-libs \
+        nodejs \
+        npm
+
+    # Install Claude Code. The binary is installed at /usr/bin/claude.
+    # For permissions, a Read deny also applies to Edit and Write, but only after
+    # 2.1.228, so ensure a floor on the release
+    dnf install -y "claude-code >= 2.1.228"
+
+    # Install Codex CLI, GitHub Copilot CLI, and Pi. These are used only with the
+    # YCRC-local provider settings injected by the outer launcher.
+    npm install -g @openai/codex @github/copilot @earendil-works/pi-coding-agent@0.85.1
+
+    # Keep one canonical policy and one canonical skill tree.
+    mkdir -p /etc/claude-code /etc/codex/skills
+    ln -sfn /etc/agents/AGENTS.md /etc/claude-code/CLAUDE.md
+
+    # Codex has a native administrator skill location. Keep the root as a real
+    # directory and link each administrator skill to the canonical tree.
+    for skill_dir in /etc/agents/skills/*; do
+        [ -d "$skill_dir" ] || continue
+        ln -sfn "$skill_dir" "/etc/codex/skills/$(basename "$skill_dir")"
+    done
+
+    # Remove package-manager caches to reduce the final image size.
+    dnf clean all
+    rm -rf /var/cache/dnf
+
+    # Create the slurm user account to mirror the clusters'
+    groupadd --system --gid 666 slurm
+    useradd \
+        --system \
+        --uid 666 \
+        --gid slurm \
+        --home-dir /var/lib/slurm \
+        --shell /sbin/nologin \
+        --no-create-home \
+        slurm
+
+%test
+    set -eu
+
+    test -x /usr/bin/claude
+    command -v codex
+    command -v copilot
+    command -v pi
+    command -v fd
+    command -v rg
+    command -v bwrap
+    test -f /etc/claude-code/managed-settings.json
+    test -f /etc/agents/AGENTS.md
+    test -f /etc/agents/skills/bouchet-storage/SKILL.md
+    test -f /etc/agents/skills/bouchet-conda/SKILL.md
+    test -f /etc/agents/skills/bouchet-r/SKILL.md
+    test -f /etc/agents/skills/bouchet-slurm/SKILL.md
+    test -f /etc/agents/skills/bouchet-gpu/SKILL.md
+    test -f /etc/agents/skills/bouchet-modules/SKILL.md
+    test -L /etc/claude-code/CLAUDE.md
+    test "$(readlink /etc/claude-code/CLAUDE.md)" = "/etc/agents/AGENTS.md"
+    test -L /etc/codex/skills/bouchet-conda
+    test "$(readlink /etc/codex/skills/bouchet-conda)" = "/etc/agents/skills/bouchet-conda"
+    getent passwd slurm
+    test -e /usr/lib64/libmunge.so.2
+
+    /usr/bin/claude --version
+    codex --version
+    # Copilot self-extracts into a writable user cache even for --version.
+    # Binary presence is validated above; runtime initialization is tested via the wrapper.
+    pi --version
+
+%labels
+    Author YCRC
+    Description Sandboxed coding-agent container for Claude Code, Codex CLI, GitHub Copilot CLI, and Pi
+    BaseImage rockylinux:9

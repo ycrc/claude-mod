@@ -1,0 +1,67 @@
+easyblock = 'Binary'
+
+name = 'coding-agents'
+version = '1.0'
+
+homepage = 'https://docs.ycrc.yale.edu/ai/aicodingtools/'
+description = """Sandboxed Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, and Pi for YCRC clusters."""
+
+toolchain = SYSTEM
+
+sources = [
+    'coding-agents.sif',
+    'coding-agents-wrapper.sh',
+    'coding-agents-bind.conf',
+    'coding-agents-path.conf',
+    'coding-agents-exclude.conf',
+    'coding-agents-env.conf',
+    'coding-agents-provider.conf',
+    'codex-config.toml',
+    'pi-models.json',
+]
+
+checksums = []
+
+postinstallcmds = [
+    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/claude',
+    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/codex',
+    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/copilot',
+    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/pi',
+    'chmod 0644 %(installdir)s/coding-agents-bind.conf',
+    'chmod 0644 %(installdir)s/coding-agents-path.conf',
+    'chmod 0644 %(installdir)s/coding-agents-exclude.conf',
+    'chmod 0644 %(installdir)s/coding-agents-env.conf',
+    'chmod 0644 %(installdir)s/coding-agents-provider.conf',
+    'chmod 0644 %(installdir)s/codex-config.toml',
+    'chmod 0644 %(installdir)s/pi-models.json',
+]
+
+modextrapaths = {'PATH': '.'}
+
+# Provider/site settings are sourced by the wrapper from the installed
+# coding-agents-provider.conf rather than trusted from mutable user environment variables.
+
+sanity_check_paths = {
+    'files': [
+        'coding-agents.sif', 'coding-agents-wrapper.sh',
+        'coding-agents-bind.conf', 'coding-agents-path.conf',
+        'coding-agents-exclude.conf', 'coding-agents-env.conf',
+        'coding-agents-provider.conf',
+        'codex-config.toml', 'pi-models.json', 'claude', 'codex', 'copilot', 'pi',
+    ],
+    'dirs': [],
+}
+
+modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'
+modloadmsg = '\nSecure AI coding assistance for Bouchet using a locally hosted LLM with popular coding-agent interfaces. Code and prompts are processed locally without being sent to external AI providers.\n'
+modloadmsg += '\nChoose a harness based on your workflow:\n'
+modloadmsg += '  pi       - Fast & flexible (recommended)\n'
+modloadmsg += '  copilot  - Consistent & structured\n'
+modloadmsg += '  codex    - Precise & task-focused\n'
+modloadmsg += '  claude   - Thorough & exploratory (slower)\n'
+modloadmsg += '\nAdministrators: use the Claude harness only.\n'
+modloadmsg += '\nAll four use the same Bouchet-local model and security boundary.\n'
+modloadmsg += 'Allocate a compute node before running, and start in a non-hidden subdirectory\n'
+modloadmsg += 'of your home, project, scratch, or approved PI space.\n'
+
+moduleclass = 'devel'
