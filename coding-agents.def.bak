@@ -19,9 +19,6 @@ From: rockylinux:9
     exit 2
 
 %post
-    # Stable mount point for optional forwarded user ssh-agent sockets.
-    mkdir -p /run/ycrc-agent
-    chmod 0755 /run/ycrc-agent
     set -eux
 
     # Copilot CLI requires Node.js 22+. Select the Rocky 9 AppStream Node 22 stream

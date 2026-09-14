@@ -37,11 +37,6 @@ fi
 export HOME="$host_home"
 export USER="$user_name"
 
-# Preserve the location of an existing user ssh-agent before credential-like
-# environment variables are scrubbed. The socket may later be forwarded into
-# the container, but the original SSH_AUTH_SOCK is not inherited directly.
-host_ssh_auth_sock="${SSH_AUTH_SOCK:-}"
-
 # Coding agents must run on a node that belongs to the active Slurm allocation.
 # Do not rely on hostname conventions to distinguish login and compute nodes.
 if ! host_name="$(hostname -s)"; then
@@ -587,22 +582,6 @@ for resolver_file in /etc/resolv.conf /etc/hosts /etc/nsswitch.conf; do
     fi
 done
 
-# Expose the user's Git configuration read-only when present. This provides
-# normal Git identity/settings without exposing ~/.ssh or Git credential files.
-if [[ -f "${host_home}/.gitconfig" ]]; then
-    bind_opts+=(--bind "${host_home}/.gitconfig:${host_home}/.gitconfig:ro")
-fi
-
-# Forward an existing ssh-agent socket when available. This allows Git/SSH to
-# use keys already loaded by the user without exposing private key files.
-# SSH_AUTH_SOCK itself was scrubbed above and is reintroduced only as the
-# administrator-selected path inside the container.
-client_ssh_auth_sock=""
-if [[ -n "$host_ssh_auth_sock" && -S "$host_ssh_auth_sock" ]]; then
-    bind_opts+=(--bind "${host_ssh_auth_sock}:/run/ycrc-agent/ssh.sock")
-    client_ssh_auth_sock="/run/ycrc-agent/ssh.sock"
-fi
-
 # Persist an existing legacy configuration file, but do not create or require it.
 if [[ -f "$claude_config_file" ]]; then
     bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
@@ -628,13 +607,6 @@ unset \
 
 client_env_opts=()
 client_args=()
-
-# Reintroduce only the controlled in-container ssh-agent socket. Users without
-# an active ssh-agent simply receive no SSH_AUTH_SOCK inside the container.
-if [[ -n "$client_ssh_auth_sock" ]]; then
-    client_env_opts+=(--env "SSH_AUTH_SOCK=${client_ssh_auth_sock}")
-fi
-
 case "$agent" in
     claude)
         client_bin=claude
