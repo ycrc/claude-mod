@@ -10,6 +10,8 @@ env_config="${launcher_dir}/coding-agents-env.conf"
 provider_config="${launcher_dir}/coding-agents-provider.conf"
 codex_config="${launcher_dir}/codex-config.toml"
 pi_models_config="${launcher_dir}/pi-models.json"
+site_agents_dir="${launcher_dir}/share/agents"
+site_skills_dir="${site_agents_dir}/skills"
 
 agent="$(basename -- "$0")"
 case "$agent" in
@@ -152,10 +154,10 @@ source "$provider_config"
 cluster_name="$YCRC_CLUSTER"
 
 # Persistent client state directories. They are deliberately separate from
-# users' normal Codex/Copilot/Pi homes so the module can enforce local-provider defaults.
-claude_config_dir="${host_home}/.claude"
-claude_data_dir="${host_home}/.local/share/claude"
-claude_config_file="${host_home}/.claude.json"
+# users' normal harness state so the YCRC-managed clients cannot modify an
+# independently installed Claude/Codex/Copilot/Pi configuration.
+claude_config_dir="${host_home}/.claude-ycrc"
+claude_config_file="${host_home}/.claude-ycrc.json"
 codex_home="${host_home}/.codex-ycrc"
 pi_home="${host_home}/.pi-ycrc"
 copilot_home="${host_home}/.copilot-ycrc"
@@ -166,7 +168,6 @@ r_library_dir="${host_home}/R"
 
 mkdir -p -- \
     "$claude_config_dir" \
-    "$claude_data_dir" \
     "$codex_home" \
     "$pi_home" \
     "$copilot_home" \
@@ -174,36 +175,47 @@ mkdir -p -- \
     "$conda_state_dir" \
     "$r_library_dir"
 
-# All harnesses consume the same administrator-owned instruction policy from
-# /etc/agents/AGENTS.md inside the image. Refresh the dedicated-state symlinks
-# on every launch to prevent policy drift.
-ln -sfn /etc/agents/AGENTS.md "${codex_home}/AGENTS.md"
-ln -sfn /etc/agents/AGENTS.md "${pi_home}/AGENTS.md"
-ln -sfn /etc/agents/AGENTS.md "${copilot_home}/copilot-instructions.md"
+# The module installation carries a host-visible, administrator-owned copy of
+# the shared policy and skills. Because /apps is bound read-only into the
+# container, these paths resolve both from a normal shell and from a harness.
+[[ -r "${site_agents_dir}/AGENTS.md" ]] || { echo "Error: missing site policy: ${site_agents_dir}/AGENTS.md" >&2; exit 1; }
+[[ -d "$site_skills_dir" ]] || { echo "Error: missing site skills: $site_skills_dir" >&2; exit 1; }
 
-# Skills are maintained once at /etc/agents/skills inside the image. Claude and
-# Pi discover skills from their normal state locations. For Claude, preserve a
-# pre-existing real ~/.claude/skills directory and add the Bouchet skills as
-# per-skill symlinks; otherwise use a single root symlink. Never delete user
-# skill content.
-link_skill_tree_non_destructive() {
+ln -sfn "${site_agents_dir}/AGENTS.md" "${codex_home}/AGENTS.md"
+ln -sfn "${site_agents_dir}/AGENTS.md" "${pi_home}/AGENTS.md"
+ln -sfn "${site_agents_dir}/AGENTS.md" "${copilot_home}/copilot-instructions.md"
+
+# Claude and Pi get real, user-writable skill directories. The YCRC-managed
+# skills are linked into those directories individually, so users can inspect
+# the managed skills from the host and add their own skills alongside them.
+link_site_skills_non_destructive() {
     local target_root="$1"
-    local skill_name target_skill
+    local skill_source skill_name target_skill
 
-    if [[ -L "$target_root" || ! -e "$target_root" ]]; then
-        ln -sfn /etc/agents/skills "$target_root"
-        return
+    if [[ -L "$target_root" ]]; then
+        # Older releases made the entire skills directory a symlink to
+        # /etc/agents/skills. Replace only that legacy link; never remove a
+        # real user-owned directory.
+        if [[ "$(readlink -- "$target_root" 2>/dev/null || true)" == "/etc/agents/skills" ]]; then
+            rm -- "$target_root"
+        else
+            echo "Error: unexpected skills symlink: $target_root -> $(readlink -- "$target_root")" >&2
+            exit 1
+        fi
     fi
 
-    if [[ ! -d "$target_root" ]]; then
-        echo "Error: skill path exists but is not a directory or symlink: $target_root" >&2
+    if [[ -e "$target_root" && ! -d "$target_root" ]]; then
+        echo "Error: skill path exists but is not a directory: $target_root" >&2
         exit 1
     fi
+    mkdir -p -- "$target_root"
 
-    for skill_name in bouchet-storage bouchet-modules bouchet-conda bouchet-r bouchet-slurm bouchet-gpu; do
+    for skill_source in "$site_skills_dir"/*; do
+        [[ -d "$skill_source" ]] || continue
+        skill_name="$(basename -- "$skill_source")"
         target_skill="${target_root}/${skill_name}"
         if [[ -L "$target_skill" || ! -e "$target_skill" ]]; then
-            ln -sfn "/etc/agents/skills/${skill_name}" "$target_skill"
+            ln -sfn "$skill_source" "$target_skill"
         elif [[ -d "$target_skill" ]]; then
             echo "Error: existing user skill conflicts with administrator skill: $target_skill" >&2
             exit 1
@@ -214,8 +226,20 @@ link_skill_tree_non_destructive() {
     done
 }
 
-link_skill_tree_non_destructive "${claude_config_dir}/skills"
-ln -sfn /etc/agents/skills "${pi_home}/skills"
+link_site_skills_non_destructive "${claude_config_dir}/skills"
+link_site_skills_non_destructive "${pi_home}/skills"
+
+# Claude still uses ~/.claude.json for some legacy state. Persist a dedicated
+# YCRC copy on the host and mount it at that legacy path only inside the
+# container, leaving a user's real ~/.claude.json untouched.
+if [[ ! -e "$claude_config_file" ]]; then
+    (umask 077; printf '{}\n' > "$claude_config_file")
+fi
+if [[ ! -f "$claude_config_file" ]]; then
+    echo "Error: YCRC Claude state path is not a regular file: $claude_config_file" >&2
+    exit 1
+fi
+chmod 0600 "$claude_config_file"
 
 # Seed Codex with the administrator provider configuration on first use. Codex
 # persists project trust entries in config.toml, so this file must remain writable.
@@ -603,10 +627,9 @@ if [[ -n "$host_ssh_auth_sock" && -S "$host_ssh_auth_sock" ]]; then
     client_ssh_auth_sock="/run/ycrc-agent/ssh.sock"
 fi
 
-# Persist an existing legacy configuration file, but do not create or require it.
-if [[ -f "$claude_config_file" ]]; then
-    bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
-fi
+# Present the dedicated YCRC Claude legacy-state file at Claude's historical
+# ~/.claude.json location only inside the container.
+bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
 
 bind_opts+=("${configured_bind_opts[@]}")
 
@@ -642,6 +665,7 @@ case "$agent" in
             --env "DISABLE_BUG_COMMAND=1"
             --env "ANTHROPIC_TELEMETRY_DISABLED=1"
             --env "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+            --env "CLAUDE_CONFIG_DIR=${claude_config_dir}"
             --env "ANTHROPIC_BASE_URL=${YCRC_CLAUDE_BASE_URL}"
             --env "ANTHROPIC_MODEL=${YCRC_AGENT_MODEL}"
             --env "ANTHROPIC_SMALL_FAST_MODEL=${YCRC_AGENT_MODEL}"

@@ -97,7 +97,12 @@ From: rockylinux:9
     test -f /etc/agents/skills/bouchet-conda/SKILL.md
     test -f /etc/agents/skills/bouchet-r/SKILL.md
     test -f /etc/agents/skills/bouchet-slurm/SKILL.md
+    test -f /etc/agents/skills/bouchet-parallel/SKILL.md
+    test -f /etc/agents/skills/bouchet-job-troubleshooting/SKILL.md
+    test -f /etc/agents/skills/bouchet-dsq-arrays/SKILL.md
     test -f /etc/agents/skills/bouchet-gpu/SKILL.md
+    test -f /etc/agents/skills/bouchet-priority/SKILL.md
+    test -f /etc/agents/skills/bouchet-scavenge/SKILL.md
     test -f /etc/agents/skills/bouchet-modules/SKILL.md
     test -L /etc/claude-code/CLAUDE.md
     test "$(readlink /etc/claude-code/CLAUDE.md)" = "/etc/agents/AGENTS.md"

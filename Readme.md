@@ -87,17 +87,17 @@ The filesystem sandbox does **not** automatically extend to jobs submitted throu
 
 ## Shared agent instructions
 
-This release uses one canonical administrator policy, `AGENTS.md`. The image installs it as `/etc/agents/AGENTS.md`. Claude receives `/etc/claude-code/CLAUDE.md` as a symlink to the canonical file, while the launcher creates harness-specific symlinks in the dedicated Codex, Pi, and Copilot state directories. This keeps Bouchet, shell-persistence, security, Slurm, and GPU-policy guidance identical across all four harnesses.
+This release uses one canonical administrator policy, `AGENTS.md`. The image installs it as `/etc/agents/AGENTS.md`, and EasyBuild installs a host-visible read-only copy under `share/agents/AGENTS.md`. Claude receives `/etc/claude-code/CLAUDE.md` as a symlink to the image copy, while the launcher creates harness-specific symlinks in the dedicated Codex, Pi, and Copilot state directories that point to the host-visible module copy. This keeps Bouchet, shell-persistence, security, Slurm, and GPU-policy guidance identical across all four harnesses while allowing users to inspect the policy outside the container.
 
 The policy explicitly states that each shell tool invocation is isolated, so module loads, Conda activation, exports, and sourced state must be combined with the dependent command in one shell invocation. It also prohibits attempts to evade YCRC idle-GPU enforcement, including `sleep` or artificial GPU activity used to retain otherwise idle GPU allocations.
 
 ## Shared Bouchet skills
 
-The image contains one administrator-owned skill tree at `/etc/agents/skills`. The same skills are exposed to all four harnesses without duplicating their content:
+The image contains one administrator-owned skill tree at `/etc/agents/skills`, and EasyBuild installs the same tree read-only under `share/agents/skills` so users can inspect the managed guidance from the host. The launcher exposes the managed skills without taking over a user's independent harness configuration:
 
-- Claude: `~/.claude/skills` points to the canonical tree when no real user skills directory exists; otherwise Bouchet skills are added as per-skill symlinks without deleting user content.
-- Codex: `/etc/codex/skills/<skill>` points to the canonical skill directories.
+- Claude: `$HOME/.claude-ycrc/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible `share/agents/skills/<skill>` tree. Users may create their own skills alongside those links.
+- Codex: `/etc/codex/skills/<skill>` points to the canonical `/etc/agents/skills/<skill>` directories inside the image.
 - Copilot: `COPILOT_SKILLS_DIRS=/etc/agents/skills`.
-- Pi: `$PI_CODING_AGENT_DIR/skills` points to the canonical tree.
+- Pi: `$PI_CODING_AGENT_DIR/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible module tree, and user skills may coexist alongside them.
 
-Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand.
+Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers storage, modules, Conda/Python, R, ordinary Slurm use, CPU/parallel resource layouts, Slurm job troubleshooting, dSQ/job arrays, and GPUs.

@@ -43,6 +43,22 @@ If entitlement cannot be confirmed, say that the partition exists and may fit th
 
 ## Resource requests
 
-GPU access requires requesting GPUs in a suitable GPU-containing partition. Common Slurm GPU options include `--gpus`, `--gpus-per-node`, and `--gpus-per-task`. The YCRC resource-request documentation currently warns not to use `--mem-per-gpu` because it does not work as intended; request host memory with `--mem` or `--mem-per-cpu` instead.
+GPU access requires explicitly requesting GPUs in a suitable GPU-containing partition; selecting a GPU partition alone does not allocate a GPU. Common Slurm GPU options include `--gpus`, `--gpus-per-node`, and `--gpus-per-task`. Prefer `--gpus=<N>` when total GPU count is what matters, and use per-node/per-task forms when topology or the distributed launcher requires them.
+
+Host RAM and GPU VRAM are separate resources. `--mem` and `--mem-per-cpu` request host RAM and do not increase GPU VRAM. The YCRC resource-request documentation currently warns not to use `--mem-per-gpu` because it does not work as intended; request host memory with `--mem` or `--mem-per-cpu` instead.
 
 Do not use GPU nodes unless the workload can actually use the requested GPU resources.
+
+### GPU-count and CPU-count correctness
+
+Do not infer a whole-node GPU request from an aggregate VRAM requirement. GPU memory is local to each device unless the application explicitly distributes model/state across multiple GPUs. Determine whether the workload supports multi-GPU sharding first, then request the smallest practical number of GPUs that provides the needed usable aggregate VRAM and runtime headroom. If the workload cannot shard, it must fit on one GPU.
+
+For a single-process multi-GPU interactive job, a request should normally use `--ntasks=1`, `--gpus=<N>`, and `--cpus-per-task=<C>`. Remember that `-n` is an alias for `--ntasks`, not a CPU request. Do not write contradictory requests such as `--ntasks=1 -n 128`; use `-c 128` or `--cpus-per-task=128` only when that many CPUs are actually justified.
+
+Do not assume that more GPUs improve performance. Verify that the application uses all requested devices and, when practical, validate multi-GPU scaling in an appropriate development allocation before recommending a larger production request.
+
+Do not select GPU hardware solely by VRAM. Account for required numerical precision/capabilities and software compatibility. Avoid unnecessarily constraining a job to a specific GPU model when several compatible GPU types can satisfy the workload.
+
+For CPU resources, use `--cpus-per-task` for CPUs belonging to a task; `--cpus-per-gpu` can be appropriate when CPU demand scales with GPU count. Do not invent large CPU counts from GPU count or node size.
+
+Do not hard-code claims that a specific node currently has free GPUs. Query current Slurm state before making availability claims.

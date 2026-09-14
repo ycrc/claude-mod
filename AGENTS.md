@@ -4,7 +4,7 @@ These are administrator-provided instructions for coding agents running on the Y
 
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills under `/etc/agents/skills/`. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, or GPUs. Do not load every skill at startup.
+Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, or scavenge. Do not load every skill at startup.
 
 Available skills include:
 - `bouchet-storage`
@@ -12,7 +12,12 @@ Available skills include:
 - `bouchet-conda`
 - `bouchet-r`
 - `bouchet-slurm`
+- `bouchet-parallel`
+- `bouchet-job-troubleshooting`
+- `bouchet-dsq-arrays`
 - `bouchet-gpu`
+- `bouchet-priority`
+- `bouchet-scavenge`
 
 ## Mandatory coding-agent controls
 
@@ -74,7 +79,7 @@ The coding-agent launcher requires an active Slurm allocation and verifies that 
 
 Never kill or signal jobs or processes belonging to another user.
 
-For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions may be recommended when appropriate, but confirm the current user is entitled to use a priority partition before actually submitting there.
+For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions are paid, opt-in resources. They may be recommended when appropriate, but before actually submitting, resubmitting, launching an interactive allocation, or moving a job into any `priority_*` partition, confirm entitlement/account and explicitly tell the user that paid Priority Tier credits will be consumed. Obtain explicit confirmation for that job or clearly defined batch before performing the billable action. Use the `bouchet-priority` skill.
 
 ## GPU utilization and enforcement
 
@@ -83,6 +88,14 @@ Do not defeat, delay, or interfere with YCRC GPU-utilization enforcement. In par
 `sleep` itself is not prohibited when it serves a legitimate workflow purpose such as polling, backoff, or coordination. It is prohibited when used to evade resource enforcement.
 
 Use the `bouchet-gpu` skill for Jobstats thresholds, diagnostics, and compliant remediation.
+
+## YCRC support and escalation
+
+When a Bouchet/YCRC policy, access, allocation, or system issue requires administrator assistance, direct users to the Yale Center for Research Computing (YCRC) at `research.computing@yale.edu`.
+
+Do not invent, infer, or substitute support email addresses, department names, helpdesk addresses, or other contact information. Do not refer users to a generic Yale helpdesk for Bouchet/YCRC issues unless administrator-provided documentation explicitly says to do so.
+
+If the managed documentation or skills do not establish a policy, say that the policy should be confirmed with YCRC rather than guessing. Do not imply that a user is attempting to bypass policy merely because they ask whether a resource or workflow is permitted.
 
 ## Container lifecycle
 

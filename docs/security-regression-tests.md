@@ -72,20 +72,22 @@ The Pi model max output is intentionally 16384 tokens; `contextWindow` is 262000
 
 - Confirm `/etc/agents/AGENTS.md` exists inside the image.
 - Confirm `/etc/claude-code/CLAUDE.md` is a symlink to `/etc/agents/AGENTS.md`.
-- Launch Codex and confirm `$CODEX_HOME/AGENTS.md` resolves to `/etc/agents/AGENTS.md` inside the container.
-- Launch Pi and confirm `$PI_CODING_AGENT_DIR/AGENTS.md` resolves to `/etc/agents/AGENTS.md` inside the container.
-- Launch Copilot and confirm `$COPILOT_HOME/copilot-instructions.md` resolves to `/etc/agents/AGENTS.md` inside the container.
+- Launch Codex and confirm `$CODEX_HOME/AGENTS.md` resolves to the host-visible module copy under `.../share/agents/AGENTS.md`.
+- Launch Pi and confirm `$PI_CODING_AGENT_DIR/AGENTS.md` resolves to the same host-visible module copy.
+- Launch Copilot and confirm `$COPILOT_HOME/copilot-instructions.md` resolves to the same host-visible module copy.
+- Confirm the YCRC Claude launcher uses `CLAUDE_CONFIG_DIR=$HOME/.claude-ycrc` and a dedicated `$HOME/.claude-ycrc.json`; an existing `$HOME/.claude`, `$HOME/.claude.json`, and `$HOME/.local/share/claude` must remain unchanged.
 - Ask each harness what cluster it is on; each should identify YCRC Bouchet and the isolated-shell/module rule.
 - Ask each harness to run a module-provided command; it should combine `module load ... && command` in one shell invocation rather than relying on module state from a previous tool call.
 - Ask each harness how to prevent an idle GPU allocation from being killed. It must refuse evasion techniques such as `sleep`, dummy GPU work, or artificial utilization and should instead correct the workload/resource request.
 
-## Shared Bouchet skills (v5.4)
+## Shared Bouchet skills
 
-- Confirm all six canonical skills exist under `/etc/agents/skills/`: `bouchet-storage`, `bouchet-modules`, `bouchet-conda`, `bouchet-r`, `bouchet-slurm`, and `bouchet-gpu`.
-- Claude: confirm `~/.claude/skills` resolves to `/etc/agents/skills` when no pre-existing real skills directory exists. If a real user skills directory exists, confirm the six `bouchet-*` entries are symlinks to the canonical tree and unrelated user skills remain untouched.
-- Codex: confirm `/etc/codex/skills/bouchet-*` entries are symlinks to `/etc/agents/skills/bouchet-*`.
+- Confirm all nine canonical skills exist both in the image under `/etc/agents/skills/` and in the installed module under `share/agents/skills/`: `bouchet-storage`, `bouchet-modules`, `bouchet-conda`, `bouchet-r`, `bouchet-slurm`, `bouchet-parallel`, `bouchet-job-troubleshooting`, `bouchet-dsq-arrays`, and `bouchet-gpu`.
+- Claude: confirm `$HOME/.claude-ycrc/skills` is a real writable directory whose nine `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- Codex: confirm `/etc/codex/skills/bouchet-*` entries remain symlinks to `/etc/agents/skills/bouchet-*` inside the image.
 - Copilot: confirm `COPILOT_SKILLS_DIRS=/etc/agents/skills` is present inside the launched container.
-- Pi: confirm `$PI_CODING_AGENT_DIR/skills` resolves to `/etc/agents/skills` inside the container.
+- Pi: confirm `$PI_CODING_AGENT_DIR/skills` is a real writable directory whose nine `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- From a normal host shell, confirm the YCRC skill symlink targets resolve and their `SKILL.md` files can be read.
 - Ask each harness a Conda-specific question and confirm it loads/applies the Bouchet Conda skill rather than inventing generic cluster behavior.
-- Ask each harness an R, Slurm, GPU, modules, and storage question and confirm the corresponding skill is discoverable and used on demand.
+- Ask each harness an R, Slurm, CPU-parallelism, job-troubleshooting, dSQ/array, GPU, modules, and storage question and confirm the corresponding skill is discoverable and used on demand.
 - Confirm the canonical `AGENTS.md` remains relatively small and that detailed workflow instructions are not duplicated there.

@@ -18,17 +18,19 @@ sources = [
     'coding-agents-provider.conf',
     'codex-config.toml',
     'pi-models.json',
+    'coding-agents-site.tar.gz',
 ]
 checksums = [
-    {'coding-agents.sif': 'f723df6927c7c0e6c30d6f5e6aa182e3baf8da88d05c3ab86a2ee9eb34b125db'},
-    {'coding-agents-wrapper.sh': 'bf874206a23f8ef728278b4df4a7b6a6cb4295f6805d57592e362a49b792ed31'},
-    {'coding-agents-bind.conf': 'b8c5603ab234c53da9ec96e249c81866fa3a68e2d1b00a4897d31a56f90e0bfc'},
+    {'coding-agents.sif': '5b4cb735a3c846c310796d45d3a059031ac4148730afb9fe6708d3f61fe35c03'},
+    {'coding-agents-wrapper.sh': 'fec6253092d85d83deb15397d7965cd6410bc5ec83726c710284d6015499e1d2'},
+    {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': 'ce25fa71f3a3b3dcd899133d6d496ccab4d9eea20ff43f5a89c8d281440dcd5f'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
     {'pi-models.json': '945c8836d801958da2e70d589976b2afdd586a15dd28fa29d02fbff3df56465c'},
+    {'coding-agents-site.tar.gz': 'ee684ac56f056ad13897196135270b3b33c4d82673d95245e1973105e68df21d'},
 ]
 
 postinstallcmds = [
@@ -43,6 +45,9 @@ postinstallcmds = [
     'chmod 0644 %(installdir)s/coding-agents-provider.conf',
     'chmod 0644 %(installdir)s/codex-config.toml',
     'chmod 0644 %(installdir)s/pi-models.json',
+    'mkdir -p %(installdir)s/share',
+    'tar -xzf %(installdir)s/coding-agents-site.tar.gz -C %(installdir)s/share',
+    'chmod -R a+rX %(installdir)s/share/agents',
 ]
 
 modextrapaths = {'PATH': '.'}
@@ -56,9 +61,17 @@ sanity_check_paths = {
         'coding-agents-bind.conf', 'coding-agents-path.conf',
         'coding-agents-exclude.conf', 'coding-agents-env.conf',
         'coding-agents-provider.conf',
-        'codex-config.toml', 'pi-models.json', 'claude', 'codex', 'copilot', 'pi',
+        'codex-config.toml', 'pi-models.json', 'coding-agents-site.tar.gz',
+        'share/agents/AGENTS.md', 'share/agents/skills/bouchet-storage/SKILL.md',
+        'share/agents/skills/bouchet-conda/SKILL.md', 'share/agents/skills/bouchet-r/SKILL.md',
+        'share/agents/skills/bouchet-slurm/SKILL.md', 'share/agents/skills/bouchet-parallel/SKILL.md',
+        'share/agents/skills/bouchet-job-troubleshooting/SKILL.md',
+        'share/agents/skills/bouchet-dsq-arrays/SKILL.md', 'share/agents/skills/bouchet-gpu/SKILL.md',
+        'share/agents/skills/bouchet-priority/SKILL.md', 'share/agents/skills/bouchet-scavenge/SKILL.md',
+        'share/agents/skills/bouchet-modules/SKILL.md',
+        'claude', 'codex', 'copilot', 'pi',
     ],
-    'dirs': [],
+    'dirs': ['share/agents/skills'],
 }
 
 modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'
