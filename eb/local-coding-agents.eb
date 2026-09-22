@@ -21,8 +21,8 @@ sources = [
     'coding-agents-site.tar.gz',
 ]
 checksums = [
-    {'coding-agents.sif': '5b4cb735a3c846c310796d45d3a059031ac4148730afb9fe6708d3f61fe35c03'},
-    {'coding-agents-wrapper.sh': 'fec6253092d85d83deb15397d7965cd6410bc5ec83726c710284d6015499e1d2'},
+    {'coding-agents.sif': '3ab7996cebbd93cd2d40a3c1f776341fee888ffc66148fcd04beb4d90408b38c'},
+    {'coding-agents-wrapper.sh': 'd491217cfbfe26b2289c00ea8fcae60afda162efd7acc44e545354e73c7c5663'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
@@ -30,7 +30,7 @@ checksums = [
     {'coding-agents-provider.conf': 'ce25fa71f3a3b3dcd899133d6d496ccab4d9eea20ff43f5a89c8d281440dcd5f'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
     {'pi-models.json': '945c8836d801958da2e70d589976b2afdd586a15dd28fa29d02fbff3df56465c'},
-    {'coding-agents-site.tar.gz': 'ee684ac56f056ad13897196135270b3b33c4d82673d95245e1973105e68df21d'},
+    {'coding-agents-site.tar.gz': '637d47ce7b64e6c84e21ce6a44f6a1170c64c2e5df56b9e61dbb483c4e9c19fd'},
 ]
 
 postinstallcmds = [

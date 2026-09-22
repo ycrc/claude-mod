@@ -16,7 +16,7 @@ Run these tests for `claude`, `codex`, `copilot`, and `pi` before deployment.
 
 - Current working directory: read/write.
 - Other user/project storage not explicitly bound: invisible.
-- `$HOME/.ssh`, unrelated dotfiles, and credentials: invisible.
+- `$HOME/.ssh`, private keys, unrelated dotfiles, and credentials: invisible. The launcher may expose only YCRC-provisioned `known_hosts` as read-only system host trust and an SSH-agent socket.
 - `/apps` and configured site software: visible with intended permissions.
 - Slurm commands: available.
 - Conda/R user state: persists only through approved binds.
@@ -32,9 +32,20 @@ Run these tests for `claude`, `codex`, `copilot`, and `pi` before deployment.
 
 ## Environment isolation
 
-Before launch, export dummy variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`, and provider-specific endpoint variables. Inside the agent container, verify they are absent unless explicitly re-injected by the wrapper.
+Before launch, export dummy variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`, and provider-specific endpoint variables. Inside the agent container, verify they are absent unless explicitly re-injected by the wrapper. `SSH_AUTH_SOCK` is the intended exception when the wrapper provides the controlled `/run/ycrc-agent/ssh.sock` path.
 
 Also test conflicting `APPTAINERENV_*` and `SINGULARITYENV_*` variables for Claude, Codex, Copilot, and Pi provider/model settings. They must be removed entirely; only wrapper `--env` values should reach the client.
+
+## Managed GitHub SSH
+
+- With no pre-existing host `SSH_AUTH_SOCK`, launch from an account whose normal host `ssh -T git@github.com` succeeds using a configured/default private key. Confirm the wrapper starts a temporary host-side ssh-agent, loads the GitHub identity, and exposes only `SSH_AUTH_SOCK=/run/ycrc-agent/ssh.sock` inside the container.
+- Confirm `/run/ycrc-agent/ssh.sock` exists inside the container and `ssh-add -l` can query the loaded identity.
+- Confirm `ssh -T git@github.com` reaches GitHub without creating a container-side `~/.ssh` directory.
+- Confirm the host private key files and the rest of `$HOME/.ssh` remain invisible inside the container.
+- Confirm the user's YCRC-provisioned `$HOME/.ssh/known_hosts` is mounted read-only as `/etc/ssh/ssh_known_hosts`, not as a writable user SSH directory.
+- With a valid pre-existing host `SSH_AUTH_SOCK`, confirm the wrapper forwards that socket instead of starting a second agent.
+- Exit the harness and confirm any wrapper-created temporary ssh-agent and its temporary directory are removed.
+- Ask each harness how to fix a failed GitHub push. It should diagnose the managed SSH-agent path first and must not ask the user to paste a private key or PAT merely because `~/.ssh` is hidden.
 
 ## Local providers
 
@@ -82,11 +93,11 @@ The Pi model max output is intentionally 16384 tokens; `contextWindow` is 262000
 
 ## Shared Bouchet skills
 
-- Confirm all nine canonical skills exist both in the image under `/etc/agents/skills/` and in the installed module under `share/agents/skills/`: `bouchet-storage`, `bouchet-modules`, `bouchet-conda`, `bouchet-r`, `bouchet-slurm`, `bouchet-parallel`, `bouchet-job-troubleshooting`, `bouchet-dsq-arrays`, and `bouchet-gpu`.
-- Claude: confirm `$HOME/.claude-ycrc/skills` is a real writable directory whose nine `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- Confirm all eleven canonical skills exist both in the image under `/etc/agents/skills/` and in the installed module under `share/agents/skills/`: `bouchet-storage`, `bouchet-modules`, `bouchet-conda`, `bouchet-r`, `bouchet-slurm`, `bouchet-parallel`, `bouchet-job-troubleshooting`, `bouchet-dsq-arrays`, `bouchet-gpu`, `bouchet-priority`, and `bouchet-scavenge`.
+- Claude: confirm `$HOME/.claude-ycrc/skills` is a real writable directory whose eleven `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
 - Codex: confirm `/etc/codex/skills/bouchet-*` entries remain symlinks to `/etc/agents/skills/bouchet-*` inside the image.
 - Copilot: confirm `COPILOT_SKILLS_DIRS=/etc/agents/skills` is present inside the launched container.
-- Pi: confirm `$PI_CODING_AGENT_DIR/skills` is a real writable directory whose nine `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- Pi: confirm `$PI_CODING_AGENT_DIR/skills` is a real writable directory whose eleven `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
 - From a normal host shell, confirm the YCRC skill symlink targets resolve and their `SKILL.md` files can be read.
 - Ask each harness a Conda-specific question and confirm it loads/applies the Bouchet Conda skill rather than inventing generic cluster behavior.
 - Ask each harness an R, Slurm, CPU-parallelism, job-troubleshooting, dSQ/array, GPU, modules, and storage question and confirm the corresponding skill is discoverable and used on demand.

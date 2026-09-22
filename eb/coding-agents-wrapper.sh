@@ -617,14 +617,75 @@ if [[ -f "${host_home}/.gitconfig" ]]; then
     bind_opts+=(--bind "${host_home}/.gitconfig:${host_home}/.gitconfig:ro")
 fi
 
-# Forward an existing ssh-agent socket when available. This allows Git/SSH to
-# use keys already loaded by the user without exposing private key files.
-# SSH_AUTH_SOCK itself was scrubbed above and is reintroduced only as the
-# administrator-selected path inside the container.
+# Reuse the user's provisioned SSH host trust without exposing ~/.ssh. YCRC
+# creates ~/.ssh/known_hosts for user accounts; present only that file as the
+# container's system known-hosts database.
+if [[ -f "${host_home}/.ssh/known_hosts" && -r "${host_home}/.ssh/known_hosts" ]]; then
+    bind_opts+=(--bind "${host_home}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro")
+fi
+
+# Provide Git/SSH authentication without exposing private key files. Prefer an
+# ssh-agent the user already has. If none is available, create a temporary
+# agent on the host and load the identities that the host SSH configuration
+# says it would use for github.com. Only the resulting socket is mounted into
+# the coding-agent container; ~/.ssh and the private keys remain inaccessible.
 client_ssh_auth_sock=""
+temporary_ssh_agent_pid=""
+temporary_ssh_agent_dir=""
+
+cleanup_temporary_ssh_agent() {
+    if [[ -n "$temporary_ssh_agent_pid" ]]; then
+        kill "$temporary_ssh_agent_pid" 2>/dev/null || true
+        wait "$temporary_ssh_agent_pid" 2>/dev/null || true
+    fi
+    if [[ -n "$temporary_ssh_agent_dir" ]]; then
+        rm -rf -- "$temporary_ssh_agent_dir"
+    fi
+}
+trap cleanup_temporary_ssh_agent EXIT HUP INT TERM
+
 if [[ -n "$host_ssh_auth_sock" && -S "$host_ssh_auth_sock" ]]; then
     bind_opts+=(--bind "${host_ssh_auth_sock}:/run/ycrc-agent/ssh.sock")
     client_ssh_auth_sock="/run/ycrc-agent/ssh.sock"
+elif command -v ssh-agent >/dev/null 2>&1 && command -v ssh-add >/dev/null 2>&1 && command -v ssh >/dev/null 2>&1; then
+    temporary_ssh_agent_dir="$(mktemp -d "${TMPDIR:-/tmp}/ycrc-agent-ssh.XXXXXX")"
+    temporary_ssh_socket="${temporary_ssh_agent_dir}/agent.sock"
+
+    # Start the agent at a wrapper-controlled path so no output parsing/eval is
+    # needed. The PID is captured only for cleanup after the harness exits.
+    temporary_ssh_agent_pid="$(ssh-agent -a "$temporary_ssh_socket" -s | sed -n 's/^echo Agent pid \([0-9][0-9]*\);$/\1/p')"
+    if [[ -z "$temporary_ssh_agent_pid" || ! -S "$temporary_ssh_socket" ]]; then
+        echo "Warning: could not start a temporary SSH agent; GitHub SSH authentication may be unavailable." >&2
+        cleanup_temporary_ssh_agent
+        temporary_ssh_agent_pid=""
+        temporary_ssh_agent_dir=""
+    else
+        # ssh-add needs the host-side socket only while identities are loaded.
+        # Resolve configured/default GitHub identities using the host SSH
+        # client, honoring IdentityFile settings rather than assuming id_rsa.
+        loaded_ssh_identity=false
+        while IFS= read -r identity_file; do
+            case "$identity_file" in
+                '~/'*) identity_file="${host_home}/${identity_file#\~/}" ;;
+                /*) ;;
+                *) continue ;;
+            esac
+            [[ -f "$identity_file" && -r "$identity_file" ]] || continue
+            if SSH_AUTH_SOCK="$temporary_ssh_socket" ssh-add -- "$identity_file" </dev/tty; then
+                loaded_ssh_identity=true
+            fi
+        done < <(ssh -G github.com 2>/dev/null | awk '$1 == "identityfile" { print $2 }' | awk '!seen[$0]++')
+
+        if [[ "$loaded_ssh_identity" == true ]]; then
+            bind_opts+=(--bind "${temporary_ssh_socket}:/run/ycrc-agent/ssh.sock")
+            client_ssh_auth_sock="/run/ycrc-agent/ssh.sock"
+        else
+            echo "Warning: no usable GitHub SSH identity could be loaded; GitHub SSH authentication may be unavailable." >&2
+            cleanup_temporary_ssh_agent
+            temporary_ssh_agent_pid=""
+            temporary_ssh_agent_dir=""
+        fi
+    fi
 fi
 
 # Present the dedicated YCRC Claude legacy-state file at Claude's historical
@@ -716,7 +777,8 @@ case "$agent" in
         ;;
 esac
 
-exec apptainer exec \
+set +e
+apptainer exec \
     --contain \
     --no-mount hostfs,bind-paths,cwd \
     "${gpu_opts[@]}" \
@@ -728,3 +790,6 @@ exec apptainer exec \
     "$client_bin" \
     "${client_args[@]}" \
     "$@"
+client_status=$?
+set -e
+exit "$client_status"

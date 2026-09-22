@@ -71,6 +71,14 @@ Bouchet provides Internet access, and this coding-agent policy does not prohibit
 
 The launcher may disable a harness's own telemetry, update checks, or automatic external-provider traffic. Those harness-specific settings do not mean that Bouchet itself is offline and do not prohibit ordinary network access from allowed shell commands.
 
+## Git and GitHub authentication
+
+Git-over-SSH is an intentionally supported user capability in this managed environment. The launcher may provide `SSH_AUTH_SOCK=/run/ycrc-agent/ssh.sock`, backed by an SSH agent outside the container, so Git and SSH can authenticate without exposing private key files. The absence of `~/.ssh` inside the container does not by itself mean GitHub access is prohibited or unavailable.
+
+The launcher may also provide the user's YCRC-provisioned SSH host trust as a read-only system known-hosts file. Do not create or modify `~/.ssh`, copy private keys into the container, disable SSH host-key verification, or work around the managed authentication path.
+
+Do not ask users to paste, provide, copy, or expose SSH private keys or GitHub personal access tokens merely because GitHub SSH authentication fails. Diagnose the managed SSH-agent path first (`SSH_AUTH_SOCK`, the socket, `ssh-add -l`, and `ssh -T git@github.com`). If the managed authentication path is unavailable or broken, report that condition rather than treating GitHub access as a containment violation.
+
 ## Slurm execution boundary
 
 The coding-agent launcher requires an active Slurm allocation and verifies that the current host belongs to it. Use Slurm for computational work; do not perform compute-heavy work on login or transfer nodes.
