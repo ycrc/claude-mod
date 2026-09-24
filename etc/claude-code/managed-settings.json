@@ -39,19 +39,14 @@
     ],
     "ask":[ 
 
-      "Bash(rm:*)",
-      "Bash(mv:*)",
       "Bash(find * -delete)",
       "Bash(find * -exec rm *)",
       "Bash(find * -exec mv *)",
 
-      "Bash(chmod:*)",
       "Bash(chgrp:*)",
       "Bash(chown:*)",
       "Bash(setfacl:*)",
 
-      "Bash(curl:*)",
-      "Bash(wget:*)",
       "Bash(rsync:*)",
       "Bash(scp:*)",
       "Bash(globus:*)",
@@ -67,11 +62,7 @@
       "Bash(conda remove:*)",
       "Bash(conda env remove:*)",
 
-      "Bash(git push:*)",
-
-      "Bash(sbatch:*)",
-      "Bash(salloc:*)",
-      "Bash(srun:*)"
+      "Bash(git push:*)"
  
     ],
 

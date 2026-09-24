@@ -91,3 +91,9 @@ use agreement, and the user may not think to mention it.
 Never send file contents, data, or directory listings to an external service. Confirm
 with the user before any outbound transfer, before uploading to any host, and before
 pushing to a remote you did not clone from.
+
+## Shell commands
+- Never chain multiple `cd` commands in a single Bash call.
+- Prefer absolute paths over `cd`. Use tool flags instead of changing
+  directories, e.g. `git -C <path>`, `npm --prefix <path>`, `make -C <path>`.
+- If you must change directory, use at most one `cd` per command.
