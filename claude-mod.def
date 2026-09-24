@@ -1,17 +1,12 @@
 Bootstrap: docker
-From: rockylinux:9
+From: rockylinux/rockylinux:9.7
 
 %files
-    etc/managed-settings.json /etc/claude-code/managed-settings.json
-    etc/CLAUDE.md /etc/claude-code/CLAUDE.md
+    etc/claude-code/managed-settings.json /etc/claude-code
+    etc/claude-code/CLAUDE.md /etc/claude-code
     etc/yum.repos.d/claude-code.repo /etc/yum.repos.d
 
 %environment
-    # The cluster/module administrator controls upgrades by rebuilding
-    # the image rather than allowing in-container self-updates.
-    # TODO: Added these to managed settings, make sure they work
-    # export DISABLE_UPDATES=1
-    # export DISABLE_INSTALLATION_CHECKS=1
 
 %runscript
     exec /usr/bin/claude "$@"
@@ -19,13 +14,17 @@ From: rockylinux:9
 %post
     set -eux
 
+    # Update Rocky Linux 9.7 packages to the latest available updates.
+    dnf upgrade -y
+
     # Install runtime utilities required by Claude Code.
     dnf install -y \
-        vim \
-        git \
-        openssh-clients \
         ca-certificates \
-        munge-libs
+        git \
+        make \
+        munge-libs \
+        openssh-clients \
+        vim
 
     # Install Claude Code. The binary is installed at /usr/bin/claude.
     # For permissions, a Read deny also applies to Edit and Write, but only after
@@ -55,8 +54,12 @@ From: rockylinux:9
     test -e /usr/lib64/libmunge.so.2
 
     /usr/bin/claude --version
+    test -x /usr/bin/make
+    /usr/bin/make --version
+
+    grep -q '^VERSION_ID="9.7"' /etc/os-release
 
 %labels
-    Author YCRC
+    Author Yale Center for Research Computing
     Description Claude Code container for cluster use
-    BaseImage rockylinux:9
+    BaseImage rockylinux/rockylinux:9.7
