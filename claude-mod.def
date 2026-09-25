@@ -2,9 +2,9 @@ Bootstrap: docker
 From: rockylinux/rockylinux:9
 
 %files
-    etc/claude-code/managed-settings.json /etc/claude-code
-    etc/claude-code/CLAUDE.md /etc/claude-code
-    etc/yum.repos.d/claude-code.repo /etc/yum.repos.d
+    etc/claude-code/managed-settings.json /etc/claude-code/managed-settings.json
+    etc/claude-code/CLAUDE.md /etc/claude-code/CLAUDE.md
+    etc/yum.repos.d/claude-code.repo /etc/yum.repos.d/claude-code.repo
 
 %environment
 
