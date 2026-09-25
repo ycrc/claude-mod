@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: rockylinux/rockylinux:9.7
+From: rockylinux/rockylinux:9
 
 %files
     etc/claude-code/managed-settings.json /etc/claude-code
@@ -13,9 +13,6 @@ From: rockylinux/rockylinux:9.7
 
 %post
     set -eux
-
-    # Update Rocky Linux 9.7 packages to the latest available updates.
-    dnf upgrade -y
 
     # Install runtime utilities required by Claude Code.
     dnf install -y \
@@ -57,9 +54,7 @@ From: rockylinux/rockylinux:9.7
     test -x /usr/bin/make
     /usr/bin/make --version
 
-    grep -q '^VERSION_ID="9.7"' /etc/os-release
-
 %labels
     Author Yale Center for Research Computing
     Description Claude Code container for cluster use
-    BaseImage rockylinux/rockylinux:9.7
+    BaseImage rockylinux/rockylinux:9
