@@ -5,6 +5,8 @@ description: Use for YCRC Bouchet filesystem locations, mydirectories, home/proj
 
 # Bouchet storage
 
+For Bouchet scratch retention, purge behavior, expiration warnings, temporary-data lifecycle, or attempts to keep scratch files beyond their lifetime, use `bouchet-scratch` as the authoritative skill.
+
 Use this skill whenever a task depends on where files should live or which Bouchet storage path is appropriate.
 
 - Use `mydirectories` to discover the current user's actual storage paths. Do not guess group-specific paths.

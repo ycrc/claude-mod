@@ -726,6 +726,7 @@ case "$agent" in
             --env "DISABLE_BUG_COMMAND=1"
             --env "ANTHROPIC_TELEMETRY_DISABLED=1"
             --env "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+            --env "CLAUDE_CODE_AUTO_MODE_SERVER=0"
             --env "CLAUDE_CONFIG_DIR=${claude_config_dir}"
             --env "ANTHROPIC_BASE_URL=${YCRC_CLAUDE_BASE_URL}"
             --env "ANTHROPIC_MODEL=${YCRC_AGENT_MODEL}"

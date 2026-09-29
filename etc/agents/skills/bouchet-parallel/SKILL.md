@@ -14,11 +14,13 @@ Before choosing `--ntasks`, `--cpus-per-task`, or `--nodes`, determine which mod
 1. **Single-threaded / serial** — one process that uses one CPU core.
 2. **Multithreaded / shared-memory** — one process uses multiple threads on one node (OpenMP, BLAS threads, many threaded libraries).
 3. **Independent multiprocessing/workers** — multiple independent local processes, generally on one node unless the application explicitly supports distributed workers.
-4. **MPI** — multiple communicating ranks/tasks that may span nodes.
+4. **MPI** — multiple communicating ranks/tasks that may span nodes. Route detailed MPI design, mpi4py, multi-node MPI, and dedicated MPI-partition questions to `bouchet-mpi`.
 5. **Hybrid MPI + threads** — multiple MPI ranks, each using multiple threads.
 6. **Many independent tasks** — use `bouchet-dsq-arrays` rather than pretending the workload is one large parallel job.
 
 If the application documentation or command does not indicate parallel support, assume that giving it more CPUs will **not** make it faster until verified.
+
+For any workload classified as MPI or hybrid MPI+threads, use `bouchet-mpi` as the authoritative Bouchet MPI skill; this skill remains the general parallelism classifier.
 
 ## Slurm meanings: do not mix these up
 

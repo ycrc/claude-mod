@@ -33,24 +33,20 @@ scontrol show node <node>
 - Do not assume that all nodes of a GPU type have the same host-memory configuration unless verified from current cluster documentation or Slurm configuration.
 
 
-## Interactive GPU work: use partition purpose, not partition names
+## Interactive GPU policy — mandatory
 
-- For interactive GPU development, debugging, environment setup, GPU detection, profiling, and scaling tests, prefer `gpu_devel`. Bouchet documentation explicitly describes `gpu_devel` as the partition for debugging GPU jobs and developing GPU-enabled code, with a 6-hour maximum walltime, at most 2 GPUs per user, and one submitted/running job per user.
-- Do **not** label another Bouchet GPU partition as “interactive” or “batch-only” merely from its name or from a remembered hardware table. The Bouchet partition page describes `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, and `gpu_b200` as GPU-job partitions, but does not by itself declare `gpu_b200` (or the others) “batch-only.” If a user specifically needs an interactive session on a production GPU partition, verify current YCRC policy/Slurm configuration rather than inventing a prohibition.
-- Priority Tier documentation explicitly states that interactive jobs are permitted on Priority Tier partitions. `priority_gpu` is paid: use `bouchet-priority` for entitlement/account selection and the mandatory explicit confirmation before actually launching or submitting a Priority Tier job.
-- Interactive VS Code is a special case: YCRC documentation says VS Code jobs must use devel partitions such as `devel` or `gpu_devel`; VS Code jobs found in other partitions may be terminated. Do not generalize ordinary command-line interactive-job rules from VS Code or vice versa.
-- `scavenge`/`scavenge_gpu` are preemptable resources. Use `bouchet-scavenge` for suitability, checkpoint/requeue, and preemption guidance. Do not present them as the normal choice for an interactive debugging session.
-- When the user asks “where can I run interactively?”, first identify the type of interactive work:
-  - CPU debugging/development -> `devel`
-  - GPU debugging/development -> `gpu_devel`
-  - Priority Tier interactive work -> corresponding `priority_*` partition only when entitled
-  - application-specific OOD/VS Code workflows -> follow that application's documented partition restrictions
-  - a specific production GPU model not available in `gpu_devel` -> verify current policy rather than assuming the production partition is either allowed or forbidden for interactive use
-- Partition hardware and availability change. Use the Bouchet partition documentation for intended purpose/limits and live Slurm queries for current resources; do not turn a live `sinfo` result into a policy claim.
+- **Interactive GPU work on Bouchet must use `gpu_devel`.**
+- Standard Tier production GPU partitions such as `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, and `gpu_b200` are not for interactive allocations. Do not use `salloc`, `srun --pty`, an alternate QOS, or other scheduler options to obtain interactive access in those production GPU partitions.
+- If an interactive request to a production GPU partition is rejected, **do not troubleshoot it by changing QOS or other Slurm settings to make it schedulable**. Direct the user to `gpu_devel`.
+- A command being accepted by Slurm, `sbatch --test-only`, `salloc`, or another scheduler validation does not establish that the workflow complies with YCRC policy.
+- Do not change QOS merely to make a rejected job succeed. Use a different QOS only when managed YCRC guidance explicitly establishes that it is appropriate.
+- Priority Tier is a documented exception: interactive jobs may use Priority Tier partitions for entitled users, but Priority Tier is paid. Route to `bouchet-priority` and obtain explicit confirmation before launching the billable allocation.
+- Interactive VS Code must use devel partitions such as `devel` or `gpu_devel`.
+- `scavenge`/`scavenge_gpu` are preemptable and are not the normal choice for an interactive debugging session.
+
+For ordinary interactive GPU development, debugging, environment setup, GPU detection, profiling, and scaling tests, use `gpu_devel`.
 
 ### Correct interactive Slurm forms
-
-YCRC documentation commonly uses `salloc` directly for an interactive allocation. For example:
 
 ```bash
 salloc --partition=gpu_devel \
@@ -60,7 +56,7 @@ salloc --partition=gpu_devel \
   --time=<walltime>
 ```
 
-Alternatively, use `srun --pty` when explicitly launching an interactive shell as a job step:
+or:
 
 ```bash
 srun --partition=gpu_devel \
@@ -71,8 +67,8 @@ srun --partition=gpu_devel \
   --pty bash -i
 ```
 
-- Do not write `salloc ... --pty`; `--pty` belongs to the `srun --pty` pattern.
-- Do not automatically request a whole node for interactive work. Request only the GPUs, CPUs, host RAM, and walltime needed for the debugging/development task.
+- Do not write `salloc ... --pty`; `--pty` belongs to `srun --pty`.
+- Do not automatically request a whole node for interactive work.
 
 ## Keep host RAM and GPU VRAM separate
 

@@ -100,4 +100,4 @@ The image contains one administrator-owned skill tree at `/etc/agents/skills`, a
 - Copilot: `COPILOT_SKILLS_DIRS=/etc/agents/skills`.
 - Pi: `$PI_CODING_AGENT_DIR/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible module tree, and user skills may coexist alongside them.
 
-Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers storage, modules, Conda/Python, R, ordinary Slurm use, CPU/parallel resource layouts, Slurm job troubleshooting, dSQ/job arrays, and GPUs.
+Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers storage, modules, Conda/Python, R, ordinary Slurm use, CPU/parallel resource layouts, MPI, Slurm job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, and Bouchet scratch lifecycle/retention.

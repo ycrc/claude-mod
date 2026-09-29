@@ -14,17 +14,21 @@ description: Use for Slurm jobs, sbatch/srun/salloc, resource requests, partitio
 - Do not assume that the partition literally named `gpu` contains all GPU resources. When asked what GPU partitions or GPU types exist, inspect all partitions/nodes (for example with `sinfo -h -o "%P %G %N"` or `sinfo -N -h -o "%N %P %G"`) rather than restricting discovery with `sinfo -p gpu`.
 - A partition may exist without being available to the current user. For `priority_*`, do not merely check entitlement: Priority Tier is paid. Route to `bouchet-priority` and obtain explicit user confirmation before actually submitting, resubmitting, launching an interactive allocation, or moving a job into Priority Tier.
 - `admintest` is never an allowed target for this normal-user coding-agent deployment. Do not recommend it and do not submit jobs to it.
-- Treat interactive-vs-batch suitability as a **partition-policy question**, not something inferable from the partition name. On Bouchet, use `devel` for CPU development/debugging and `gpu_devel` for GPU development/debugging by default. Do not call a production partition “batch-only” unless current YCRC documentation/policy says so. Priority Tier documentation explicitly permits interactive jobs on Priority Tier partitions for entitled users.
+- Interactive GPU work on Bouchet must use `gpu_devel`. Do not use Standard Tier production GPU partitions such as `gpu` for interactive allocations, even if changing QOS or another option makes Slurm accept the request. Scheduler acceptance does not override YCRC policy. Priority Tier is a documented paid exception for entitled users; use `bouchet-priority` and obtain confirmation before launching it.
 - For shell-style interactive allocations, use either `salloc <resources>` or `srun <resources> --pty bash -i`; do not use `salloc --pty`.
 
 ## Route specialized Slurm questions to the focused skills
 
-- For tasks vs. CPUs, threading, multiprocessing, MPI, hybrid MPI+threads, GNU Parallel, or multi-node CPU layout, use `bouchet-parallel`.
+- For general tasks vs. CPUs, threading, multiprocessing, GNU Parallel, or CPU layout, use `bouchet-parallel`.
+- For MPI, mpi4py, MPI ranks, multi-node MPI, the `mpi`/`scavenge_mpi` partitions, or hybrid MPI+threads, use `bouchet-mpi`.
 - For pending jobs, failed/cancelled jobs, OOM/timeout diagnosis, resource efficiency, quotas, submission-rate failures, or batch-vs-interactive discrepancies, use `bouchet-job-troubleshooting`.
 - For large independent batches and job arrays, use `bouchet-dsq-arrays`.
 - For GPU sizing, GPU memory, GPU types, CUDA, Jobstats GPU utilization, and multi-GPU layouts, use `bouchet-gpu`.
 - For `priority`, `priority_gpu`, `priority_mpi`, paid Priority Tier credits, `prio_` accounts, or Priority Tier costs/usage, use `bouchet-priority`.
 - For `scavenge`, `scavenge_gpu`, preemption, requeue/checkpoint decisions, or opportunistic capacity, use `bouchet-scavenge`.
+- For Apptainer/Singularity containers, use `bouchet-apptainer`.
+- For AlphaFold workflows, use `bouchet-alphafold`.
+- For CryoSPARC workflows, use `bouchet-cryosparc`.
 
 Keep this skill as the general Slurm entry point; do not invent detailed parallel or failure-remediation rules when a focused Bouchet skill applies.
 

@@ -43,6 +43,7 @@ From: rockylinux:9
         openssh-clients \
         ca-certificates \
         munge-libs \
+        make \
         nodejs \
         npm
 
@@ -91,6 +92,7 @@ From: rockylinux:9
     command -v fd
     command -v rg
     command -v bwrap
+    command -v make
     test -f /etc/claude-code/managed-settings.json
     test -f /etc/agents/AGENTS.md
     test -f /etc/agents/skills/bouchet-storage/SKILL.md
@@ -103,6 +105,11 @@ From: rockylinux:9
     test -f /etc/agents/skills/bouchet-gpu/SKILL.md
     test -f /etc/agents/skills/bouchet-priority/SKILL.md
     test -f /etc/agents/skills/bouchet-scavenge/SKILL.md
+    test -f /etc/agents/skills/bouchet-apptainer/SKILL.md
+    test -f /etc/agents/skills/bouchet-alphafold/SKILL.md
+    test -f /etc/agents/skills/bouchet-cryosparc/SKILL.md
+    test -f /etc/agents/skills/bouchet-mpi/SKILL.md
+    test -f /etc/agents/skills/bouchet-scratch/SKILL.md
     test -f /etc/agents/skills/bouchet-modules/SKILL.md
     test -L /etc/claude-code/CLAUDE.md
     test "$(readlink /etc/claude-code/CLAUDE.md)" = "/etc/agents/AGENTS.md"

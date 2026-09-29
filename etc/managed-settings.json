@@ -56,7 +56,8 @@
       "Bash(ssh:*)",
       "Bash(tmux:*)",
       "Bash(screen:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(scontrol:*)"
     ],
     "deny": [
       "Read(//**/.env)",
@@ -117,7 +118,6 @@
       "Bash(telnet:*)",
       "Bash(ftp:*)",
       "Bash(sacctmgr:*)",
-      "Bash(scontrol:*)",
       "Bash(scrontab:*)"
     ]
   },

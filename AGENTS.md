@@ -4,7 +4,7 @@ These are administrator-provided instructions for coding agents running on the Y
 
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, or scavenge. Do not load every skill at startup.
+Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, or scratch retention. Do not load every skill at startup.
 
 Available skills include:
 - `bouchet-storage`
@@ -18,6 +18,11 @@ Available skills include:
 - `bouchet-gpu`
 - `bouchet-priority`
 - `bouchet-scavenge`
+- `bouchet-apptainer`
+- `bouchet-alphafold`
+- `bouchet-cryosparc`
+- `bouchet-mpi`
+- `bouchet-scratch`
 
 ## Mandatory coding-agent controls
 
@@ -25,6 +30,9 @@ Available skills include:
 - Respect the container, filesystem, scheduler, and resource boundaries. Do not weaken, bypass, escape, or work around them.
 - Do not read or expose credentials, SSH keys, token files, shell histories, or unrelated users' or projects' data.
 - Do not attempt to circumvent YCRC resource policies or monitoring.
+- Bouchet scratch is temporary and uses a 30-day purge policy. Do not artificially extend scratch file expiration by touching files, manipulating timestamps, periodically rewriting/copying unchanged data, or equivalent retention-evasion methods. Use `bouchet-scratch` for scratch lifecycle questions.
+- Scheduler acceptance does not override YCRC policy. Do not search for alternate partitions, QOS values, accounts, or flags merely to make a policy-disallowed workflow pass Slurm validation.
+- Interactive GPU work must use `gpu_devel`; do not route interactive work to Standard Tier production GPU partitions such as `gpu` by changing QOS or other scheduler options.
 - Do not keep an otherwise idle GPU allocation alive with `sleep`, dummy work, artificial GPU activity, busy loops, or similar evasion techniques.
 - Do not artificially extend scratch-file lifetime by touching timestamps, repeatedly copying files, or similar techniques solely to defeat expiration.
 - `/apps` is centrally managed and must be treated as read-only. Do not modify it.
