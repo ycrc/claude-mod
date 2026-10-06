@@ -22,12 +22,12 @@ sources = [
 ]
 checksums = [
     {'coding-agents.sif': '9ce345fc5ccbef7b6991b841451999fc81bd9c8cfb3f01aff39ec440ff795eeb'},
-    {'coding-agents-wrapper.sh': '66409d7c250d1e9f5834bd27dbeb11bb1c3acd901da3070e9ddaf4f2bc9e3e2c'},
+    {'coding-agents-wrapper.sh': 'e5ef47cb3f79bd02496698df66fe5ab8e960e5a3dd89ad878dc58e7798833ced'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
-    {'coding-agents-provider.conf': 'ce25fa71f3a3b3dcd899133d6d496ccab4d9eea20ff43f5a89c8d281440dcd5f'},
+    {'coding-agents-provider.conf': '6d6f9ac92debae5b2dd7c4f71a5187ed5a94434ba3821c3d7c5f2314063f079a'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
     {'pi-models.json': '945c8836d801958da2e70d589976b2afdd586a15dd28fa29d02fbff3df56465c'},
     {'coding-agents-site.tar.gz': 'd1f96c741b52ed53693e48fe348d4284ad5557a825e83d82a18a5579f2ca37f5'},

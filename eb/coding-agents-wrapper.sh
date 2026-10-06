@@ -778,6 +778,8 @@ case "$agent" in
         ;;
 esac
 
+session_start="$(date +%s)"
+
 set +e
 apptainer exec \
     --contain \
@@ -792,5 +794,39 @@ apptainer exec \
     "${client_args[@]}" \
     "$@"
 client_status=$?
+
+# Per-netid usage accounting. Report one session record to the collector
+# running beside the inference server, so administrators can see which netids
+# use the service, through which harness, and for how long. The endpoint is
+# configured in coding-agents-provider.conf; leaving it unset disables
+# reporting entirely.
+#
+# Identity comes from the account database ($user_name, resolved at the top of
+# this script), never from the mutable environment. Prompts, file paths,
+# command arguments and the working directory are deliberately NOT reported --
+# only who ran which harness, for how long, and whether it exited cleanly.
+#
+# Reporting is strictly best-effort and must never break or delay a user's
+# session: the call is bounded by a short timeout, all output is discarded,
+# and every failure is swallowed. A refused connection (collector down)
+# returns immediately rather than waiting out the timeout.
+if [[ -n "${YCRC_AGENT_USAGE_ENDPOINT:-}" ]] && command -v curl >/dev/null 2>&1; then
+    {
+        session_end="$(date +%s)"
+        printf -v usage_record \
+            '{"netid":"%s","uid":%s,"agent":"%s","cluster":"%s","model":"%s","slurm_job":"%s","node":"%s","start_epoch":%s,"end_epoch":%s,"duration_s":%s,"exit":%s,"wrapper":"1.0"}' \
+            "$user_name" "$(id -u)" "$agent" "${YCRC_CLUSTER:-unknown}" \
+            "${YCRC_AGENT_MODEL:-unknown}" "${SLURM_JOB_ID:-}" "$host_name" \
+            "$session_start" "$session_end" "$((session_end - session_start))" \
+            "$client_status"
+        curl -sS -X POST \
+            --connect-timeout 1 --max-time 3 \
+            -H 'Content-Type: application/json' \
+            ${YCRC_AGENT_USAGE_TOKEN:+-H "X-Usage-Token: ${YCRC_AGENT_USAGE_TOKEN}"} \
+            --data "$usage_record" \
+            "$YCRC_AGENT_USAGE_ENDPOINT"
+    } >/dev/null 2>&1 || true
+fi
+
 set -e
 exit "$client_status"
