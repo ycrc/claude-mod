@@ -719,6 +719,22 @@ if [[ -n "$client_ssh_auth_sock" ]]; then
     client_env_opts+=(--env "SSH_AUTH_SOCK=${client_ssh_auth_sock}")
 fi
 
+# Credential presented to the inference endpoint.
+#
+# With user-scoped auth enabled, the launcher sends "<netid>.<agent>" instead
+# of the shared site credential. The gateway in front of vLLM splits that to
+# attribute token usage to a netid, then substitutes the real upstream
+# credential before forwarding. vLLM itself never sees this value.
+#
+# This REQUIRES the gateway to be deployed: vLLM rejects anything but its own
+# API key, so enabling it while talking to vLLM directly would break every
+# harness. It is therefore off unless coding-agents-provider.conf turns it on.
+if [[ "${YCRC_AGENT_USER_SCOPED_AUTH:-0}" == "1" ]]; then
+    agent_auth="${user_name}.${agent}"
+else
+    agent_auth="${YCRC_AGENT_AUTH}"
+fi
+
 case "$agent" in
     claude)
         client_bin=claude
@@ -731,7 +747,7 @@ case "$agent" in
             --env "ANTHROPIC_BASE_URL=${YCRC_CLAUDE_BASE_URL}"
             --env "ANTHROPIC_MODEL=${YCRC_AGENT_MODEL}"
             --env "ANTHROPIC_SMALL_FAST_MODEL=${YCRC_AGENT_MODEL}"
-            --env "ANTHROPIC_AUTH_TOKEN=${YCRC_AGENT_AUTH}"
+            --env "ANTHROPIC_AUTH_TOKEN=${agent_auth}"
             --env "CLAUDE_CODE_EFFORT_LEVEL=${YCRC_CLAUDE_EFFORT:-xhigh}"
             --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_CONTEXT}"
         )
@@ -741,7 +757,7 @@ case "$agent" in
         [[ -r "$codex_config" ]] || { echo "Error: missing Codex config: $codex_config" >&2; exit 1; }
         client_env_opts+=(
             --env "CODEX_HOME=${codex_home}"
-            --env "BOUCHET_API_KEY=${YCRC_AGENT_AUTH}"
+            --env "BOUCHET_API_KEY=${agent_auth}"
         )
         ;;
     pi)
@@ -753,7 +769,7 @@ case "$agent" in
             --env "PI_OFFLINE=true"
             --env "PI_SKIP_VERSION_CHECK=1"
             --env "PI_TELEMETRY=0"
-            --env "YCRC_PI_API_KEY=${YCRC_AGENT_AUTH}"
+            --env "YCRC_PI_API_KEY=${agent_auth}"
         )
         # Explicit selection prevents Pi from restoring a previously selected
         # non-Bouchet provider/model from persistent session state.
@@ -766,7 +782,7 @@ case "$agent" in
             --env "COPILOT_CACHE_HOME=${copilot_cache_home}"
             --env "COPILOT_PROVIDER_TYPE=openai"
             --env "COPILOT_PROVIDER_BASE_URL=${YCRC_COPILOT_BASE_URL}"
-            --env "COPILOT_PROVIDER_API_KEY=${YCRC_AGENT_AUTH}"
+            --env "COPILOT_PROVIDER_API_KEY=${agent_auth}"
             --env "COPILOT_MODEL=${YCRC_AGENT_MODEL}"
             --env "COPILOT_PROVIDER_MAX_PROMPT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
             --env "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
