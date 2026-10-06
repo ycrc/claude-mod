@@ -27,7 +27,7 @@ checksums = [
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
-    {'coding-agents-provider.conf': '3bfb7e4f7a9700bfd837d3f0682c18a597ab253626fd097fabc8408c88b35eeb'},
+    {'coding-agents-provider.conf': '9093c923b9b2df64d66f614e575a9d6795d93b3388ebef588eeba819ef730a42'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
     {'pi-models.json': '945c8836d801958da2e70d589976b2afdd586a15dd28fa29d02fbff3df56465c'},
     {'coding-agents-site.tar.gz': 'd1f96c741b52ed53693e48fe348d4284ad5557a825e83d82a18a5579f2ca37f5'},
