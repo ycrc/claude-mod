@@ -22,15 +22,15 @@ sources = [
 ]
 checksums = [
     {'coding-agents.sif': '9ce345fc5ccbef7b6991b841451999fc81bd9c8cfb3f01aff39ec440ff795eeb'},
-    {'coding-agents-wrapper.sh': 'f821f08264fcc9aa8d7b92e727c0d9656907115fb2e52491f0517ea44b19a3ec'},
+    {'coding-agents-wrapper.sh': '4bc168f4fd54594886a425402825979224d08345f6e06b372eee2ad5c0de7cc9'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
-    {'coding-agents-provider.conf': '9093c923b9b2df64d66f614e575a9d6795d93b3388ebef588eeba819ef730a42'},
+    {'coding-agents-provider.conf': 'e852117a64507176fdfcac693921be6377907bde18be44fcf464de5eaf2e7062'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
-    {'pi-models.json': '945c8836d801958da2e70d589976b2afdd586a15dd28fa29d02fbff3df56465c'},
-    {'coding-agents-site.tar.gz': 'd1f96c741b52ed53693e48fe348d4284ad5557a825e83d82a18a5579f2ca37f5'},
+    {'pi-models.json': 'e6b1a6a67677000c78d963d2f3ffaed7ac4fe0f43ca8b9ffa3a7858019854f94'},
+    {'coding-agents-site.tar.gz': '897b7da71afaa7c768b564015551592ff036507bc25608159d28b03c241efcd1'},
 ]
 
 postinstallcmds = [
@@ -72,9 +72,11 @@ sanity_check_paths = {
         'share/agents/skills/bouchet-cryosparc/SKILL.md', 'share/agents/skills/bouchet-mpi/SKILL.md',
         'share/agents/skills/bouchet-scratch/SKILL.md',
         'share/agents/skills/bouchet-modules/SKILL.md',
+        'share/agents/subagents/deep-reasoning.md',
+        'share/agents/subagents/quick-task.md',
         'claude', 'codex', 'copilot', 'pi',
     ],
-    'dirs': ['share/agents/skills'],
+    'dirs': ['share/agents/skills', 'share/agents/subagents'],
 }
 
 modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'

@@ -12,6 +12,7 @@ codex_config="${launcher_dir}/codex-config.toml"
 pi_models_config="${launcher_dir}/pi-models.json"
 site_agents_dir="${launcher_dir}/share/agents"
 site_skills_dir="${site_agents_dir}/skills"
+site_subagents_dir="${site_agents_dir}/subagents"
 
 agent="$(basename -- "$0")"
 case "$agent" in
@@ -153,6 +154,28 @@ source "$provider_config"
 : "${YCRC_COPILOT_BASE_URL:?Error: YCRC_COPILOT_BASE_URL missing from $provider_config}"
 cluster_name="$YCRC_CLUSTER"
 
+# Extended reasoning opt-in.
+#
+# Set YCRC_THINKING=1 before launching to run the session with the model's
+# reasoning mode enabled, for example:
+#
+#     YCRC_THINKING=1 pi
+#
+# This selects a virtual model name that the YCRC inference gateway recognises:
+# the gateway serves it with the real model and reasoning switched on. The
+# model name is used because it is the one setting that reaches the gateway
+# from every harness; the launcher cannot add headers to a harness's own HTTP
+# requests.
+#
+# Reasoning produces noticeably more output and a slower first token, so it is
+# off unless the user asks for it AND the administrator has configured a
+# suffix. Clearing YCRC_AGENT_THINK_SUFFIX disables the feature entirely.
+agent_model="$YCRC_AGENT_MODEL"
+if [[ "${YCRC_THINKING:-0}" == "1" && -n "${YCRC_AGENT_THINK_SUFFIX:-}" ]]; then
+    agent_model="${YCRC_AGENT_MODEL}${YCRC_AGENT_THINK_SUFFIX}"
+    printf 'Extended reasoning enabled for this session (model: %s).\n' "$agent_model"
+fi
+
 # Persistent client state directories. They are deliberately separate from
 # users' normal harness state so the YCRC-managed clients cannot modify an
 # independently installed Claude/Codex/Copilot/Pi configuration.
@@ -229,6 +252,40 @@ link_site_skills_non_destructive() {
 link_site_skills_non_destructive "${claude_config_dir}/skills"
 link_site_skills_non_destructive "${pi_home}/skills"
 
+# YCRC-managed Claude subagents. These let a session delegate work to a
+# different model than the one it is running: a fast session can hand a hard
+# sub-problem to the reasoning model, or a reasoning session can hand routine
+# lookups to the fast one. Claude is the only harness that honours a per-agent
+# model, so these are linked for Claude alone.
+#
+# Unlike skills, these are individual files and a user may legitimately want
+# their own agent of the same name. A conflicting real file is therefore left
+# untouched and the user's definition wins, rather than being treated as an
+# error that would refuse to launch the agent.
+link_site_subagents_non_destructive() {
+    local target_root="$1"
+    local agent_source agent_name target_agent
+
+    [[ -d "$site_subagents_dir" ]] || return 0
+
+    if [[ -e "$target_root" && ! -d "$target_root" ]]; then
+        echo "Warning: agent path is not a directory, skipping managed agents: $target_root" >&2
+        return 0
+    fi
+    mkdir -p -- "$target_root"
+
+    for agent_source in "$site_subagents_dir"/*.md; do
+        [[ -f "$agent_source" ]] || continue
+        agent_name="$(basename -- "$agent_source")"
+        target_agent="${target_root}/${agent_name}"
+        if [[ -L "$target_agent" || ! -e "$target_agent" ]]; then
+            ln -sfn "$agent_source" "$target_agent"
+        fi
+    done
+}
+
+link_site_subagents_non_destructive "${claude_config_dir}/agents"
+
 # Claude still uses ~/.claude.json for some legacy state. Persist a dedicated
 # YCRC copy on the host and mount it at that legacy path only inside the
 # container, leaving a user's real ~/.claude.json untouched.
@@ -272,6 +329,27 @@ if grep -qE '^[[:space:]]*sandbox_mode[[:space:]]*=' "$codex_user_config"; then
     sed -i -E 's|^[[:space:]]*sandbox_mode[[:space:]]*=.*$|sandbox_mode = "danger-full-access"|' "$codex_user_config"
 else
     sed -i '/^approval_policy[[:space:]]*=/a sandbox_mode = "danger-full-access"' "$codex_user_config"
+fi
+# Codex persists its own config.toml, so a user who has run Codex before keeps
+# whatever endpoint they were first given. If the inference service moves to a
+# different node, that stale value silently points them at a host that is no
+# longer serving, and the only fix would be deleting the file by hand. Re-apply
+# the endpoint from the administrator-managed config on every launch, the same
+# way the model sizing above is kept current. Only an existing key is rewritten:
+# base_url lives inside a [model_providers.*] table, so inserting one blind
+# could land it in the wrong table.
+codex_site_base_url="$(sed -nE 's|^[[:space:]]*base_url[[:space:]]*=[[:space:]]*"(.*)"[[:space:]]*$|\1|p' "$codex_config" | head -1)"
+if [[ -n "$codex_site_base_url" ]] \
+   && grep -qE '^[[:space:]]*base_url[[:space:]]*=' "$codex_user_config"; then
+    sed -i -E "s|^[[:space:]]*base_url[[:space:]]*=.*$|base_url = \"${codex_site_base_url}\"|" "$codex_user_config"
+fi
+
+# Codex takes its model only from this file, so the reasoning opt-in has to be
+# written here rather than passed as an environment variable like the others.
+if grep -qE '^[[:space:]]*model[[:space:]]*=' "$codex_user_config"; then
+    sed -i -E "s|^[[:space:]]*model[[:space:]]*=.*$|model = \"${agent_model}\"|" "$codex_user_config"
+else
+    sed -i "1i model = \"${agent_model}\"" "$codex_user_config"
 fi
 chmod 0600 "$codex_user_config"
 # Pi's managed models file is overlaid read-only at launch.
@@ -745,7 +823,7 @@ case "$agent" in
             --env "CLAUDE_CODE_AUTO_MODE_SERVER=0"
             --env "CLAUDE_CONFIG_DIR=${claude_config_dir}"
             --env "ANTHROPIC_BASE_URL=${YCRC_CLAUDE_BASE_URL}"
-            --env "ANTHROPIC_MODEL=${YCRC_AGENT_MODEL}"
+            --env "ANTHROPIC_MODEL=${agent_model}"
             --env "ANTHROPIC_SMALL_FAST_MODEL=${YCRC_AGENT_MODEL}"
             --env "ANTHROPIC_AUTH_TOKEN=${agent_auth}"
             --env "CLAUDE_CODE_EFFORT_LEVEL=${YCRC_CLAUDE_EFFORT:-xhigh}"
@@ -773,7 +851,7 @@ case "$agent" in
         )
         # Explicit selection prevents Pi from restoring a previously selected
         # non-Bouchet provider/model from persistent session state.
-        client_args+=(--approve --provider bouchet --model "${YCRC_AGENT_MODEL}")
+        client_args+=(--approve --provider bouchet --model "${agent_model}")
         ;;
     copilot)
         client_bin=copilot
@@ -783,7 +861,7 @@ case "$agent" in
             --env "COPILOT_PROVIDER_TYPE=openai"
             --env "COPILOT_PROVIDER_BASE_URL=${YCRC_COPILOT_BASE_URL}"
             --env "COPILOT_PROVIDER_API_KEY=${agent_auth}"
-            --env "COPILOT_MODEL=${YCRC_AGENT_MODEL}"
+            --env "COPILOT_MODEL=${agent_model}"
             --env "COPILOT_PROVIDER_MAX_PROMPT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
             --env "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
             --env "COPILOT_SKILLS_DIRS=/etc/agents/skills"

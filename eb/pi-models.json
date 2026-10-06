@@ -9,6 +9,11 @@
           "id": "Qwen3.8-27B",
           "contextWindow": 262000,
           "maxTokens": 16384
+        },
+        {
+          "id": "Qwen3.8-27B-think",
+          "contextWindow": 262000,
+          "maxTokens": 16384
         }
       ]
     }
