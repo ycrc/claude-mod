@@ -22,15 +22,15 @@ sources = [
 ]
 checksums = [
     {'coding-agents.sif': '9ce345fc5ccbef7b6991b841451999fc81bd9c8cfb3f01aff39ec440ff795eeb'},
-    {'coding-agents-wrapper.sh': '4bc168f4fd54594886a425402825979224d08345f6e06b372eee2ad5c0de7cc9'},
+    {'coding-agents-wrapper.sh': 'd2e7e5fd09e9dcd24983caf49439b4b17ebda629eb5d53b1d3c4c2f61cbeb32d'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
-    {'coding-agents-provider.conf': 'e852117a64507176fdfcac693921be6377907bde18be44fcf464de5eaf2e7062'},
+    {'coding-agents-provider.conf': 'f1242d8ea04b15ee9ba137a60ef83bed5169f42764ee764b4d691343f5bc8cf0'},
     {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
     {'pi-models.json': 'e6b1a6a67677000c78d963d2f3ffaed7ac4fe0f43ca8b9ffa3a7858019854f94'},
-    {'coding-agents-site.tar.gz': '897b7da71afaa7c768b564015551592ff036507bc25608159d28b03c241efcd1'},
+    {'coding-agents-site.tar.gz': '475f6f8806d2a09cefbc681616678d98c5d1e7c67cef1a69610f22107bc55d7a'},
 ]
 
 postinstallcmds = [
@@ -74,9 +74,11 @@ sanity_check_paths = {
         'share/agents/skills/bouchet-modules/SKILL.md',
         'share/agents/subagents/deep-reasoning.md',
         'share/agents/subagents/quick-task.md',
+        'share/agents/pi-subagents/deep-reasoning.md',
+        'share/agents/pi-subagents/quick-task.md',
         'claude', 'codex', 'copilot', 'pi',
     ],
-    'dirs': ['share/agents/skills', 'share/agents/subagents'],
+    'dirs': ['share/agents/skills', 'share/agents/subagents', 'share/agents/pi-subagents'],
 }
 
 modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'

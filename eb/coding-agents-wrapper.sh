@@ -13,6 +13,7 @@ pi_models_config="${launcher_dir}/pi-models.json"
 site_agents_dir="${launcher_dir}/share/agents"
 site_skills_dir="${site_agents_dir}/skills"
 site_subagents_dir="${site_agents_dir}/subagents"
+site_pi_subagents_dir="${site_agents_dir}/pi-subagents"
 
 agent="$(basename -- "$0")"
 case "$agent" in
@@ -285,6 +286,42 @@ link_site_subagents_non_destructive() {
 }
 
 link_site_subagents_non_destructive "${claude_config_dir}/agents"
+
+# Pi delegated reasoning. Pi ships an official subagent extension that runs each
+# delegated task in a separate Pi process -- an isolated context -- and honours a
+# per-agent model. Linking it in gives Pi the same capability Claude has: a fast
+# session can hand a hard sub-problem to the reasoning model, or a reasoning
+# session can hand routine lookups to the fast one.
+#
+# The extension itself is NOT vendored. These are links to the copy inside the
+# container image, so it always matches the packaged Pi version and YCRC
+# maintains only the two agent definitions. The links deliberately point at an
+# in-container path: they do not resolve on the host, only where Pi reads them.
+link_pi_subagent_extension() {
+    local ext_target="${pi_home}/extensions/subagent"
+    local agents_target="${pi_home}/agents"
+    local agent_source agent_name target_agent
+
+    [[ -n "${YCRC_PI_SUBAGENT_EXT_DIR:-}" ]] || return 0
+    [[ -d "$site_pi_subagents_dir" ]] || return 0
+
+    mkdir -p -- "$ext_target" "$agents_target" || return 0
+    ln -sfn "${YCRC_PI_SUBAGENT_EXT_DIR}/index.ts"  "${ext_target}/index.ts"
+    ln -sfn "${YCRC_PI_SUBAGENT_EXT_DIR}/agents.ts" "${ext_target}/agents.ts"
+
+    # As with the Claude agents, a real user file of the same name is left alone
+    # so a user's own definition wins rather than the launcher refusing to start.
+    for agent_source in "$site_pi_subagents_dir"/*.md; do
+        [[ -f "$agent_source" ]] || continue
+        agent_name="$(basename -- "$agent_source")"
+        target_agent="${agents_target}/${agent_name}"
+        if [[ -L "$target_agent" || ! -e "$target_agent" ]]; then
+            ln -sfn "$agent_source" "$target_agent"
+        fi
+    done
+}
+
+link_pi_subagent_extension
 
 # Claude still uses ~/.claude.json for some legacy state. Persist a dedicated
 # YCRC copy on the host and mount it at that legacy path only inside the
