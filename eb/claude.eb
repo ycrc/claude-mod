@@ -13,6 +13,7 @@ toolchain = SYSTEM
 sources = [
     'claude-mod.sif',
     'claude-wrapper.sh',
+    'claude-wrapper-functions.sh',
     'claude-bind.conf',
     'claude-path.conf',
     'claude-exclude.conf',
@@ -27,6 +28,7 @@ checksums = [
 # "claude", which is the command exposed by the module.
 postinstallcmds = [
     'install -m 0755 %(installdir)s/claude-wrapper.sh %(installdir)s/claude',
+    'chmod 0644 %(installdir)s/claude-wrapper-functions.sh',
     'chmod 0644 %(installdir)s/claude-bind.conf',
     'chmod 0644 %(installdir)s/claude-path.conf',
     'chmod 0644 %(installdir)s/claude-exclude.conf',
@@ -41,6 +43,7 @@ sanity_check_paths = {
     'files': [
         'claude-mod.sif',
         'claude-wrapper.sh',
+        'claude-wrapper-functions.sh',
         'claude-bind.conf',
         'claude-path.conf',
         'claude-exclude.conf',
@@ -50,8 +53,13 @@ sanity_check_paths = {
     'dirs': [],
 }
 
-modloadmsg = '\nRun Claude Code on YCRC Clusters with safer defaults.\n'
-modloadmsg += '\nAllocate a compute node before running.\n'
-modloadmsg += '\nStart in a non-hidden subdirectory of your home, project, or scratch space.'
+# Lmod prints this on stderr; \033[32m...\033[0m colors the check mark green.
+# %(version)s is filled in by EasyBuild from the version set when building.
+local_check = '\033[32m\u2713\033[0m '
+modloadmsg = 'Welcome to the YCRC Claude Code module version %(version)s: Claude with safer defaults\n'
+modloadmsg += local_check + 'Allocate a compute node before running.\n'
+modloadmsg += local_check + 'Start in a non-hidden subfolder of your home, project, scratch, or PI space.\n'
+modloadmsg += local_check + 'Run claude --ycrc-help for module-specific usage.\n'
+modloadmsg += '\n'
 
 moduleclass = 'devel'

@@ -1,436 +1,312 @@
 #!/usr/bin/env bash
+# =============================================================================
+# claude-wrapper.sh -- the claude-mod launcher, installed by EasyBuild as `claude`.
+#
+# Runs Claude Code inside the claude-mod Apptainer image with safer defaults:
+# Claude sees only the directory it was started from, administrator-chosen
+# paths, and directories the user names with --bind; sensitive environment
+# variables are removed first; and it cannot run on a login node.
+# Full policy: docs/claude-wrapper.md.
+#
+# Launch sequence:
+#   1. Locate the files; take out module options; --ycrc-help exits here.
+#   2. Check required environment variables.
+#   3. Login-node protection.
+#   4. Environment scrubbing.
+#   5. Claude state directories.
+#   6. Admin binds (claude-bind.conf).
+#   7. Container PATH (claude-path.conf).
+#   8. Exclusions (claude-exclude.conf).
+#   9. Working-directory policy.
+#  10. Launch prerequisites (apptainer, image).
+#  11. User binds (--bind).
+#  12. GPU support.
+#  13. Bind ordering, then launch.
+#
+# Files read, all beside this script:
+#   claude-wrapper-functions.sh   shared helpers and the longer steps
+#   claude-env.conf               sensitive environment-variable name patterns
+#   claude-bind.conf              directories to bind and their modes
+#   claude-path.conf              bound tool directories to prepend to PATH
+#   claude-exclude.conf           directories that may not be the work dir
+#   claude-mod.sif                the Apptainer image
+# =============================================================================
 set -euo pipefail
 
+# --- Setup --------------------------------------------------------------------
+# Everything is located relative to this script's real directory, so the
+# user's current directory never affects which files are used.
 launcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+functions_file="${launcher_dir}/claude-wrapper-functions.sh"
+if [[ ! -r "$functions_file" ]]; then
+    echo "Error: launcher functions not found or not readable: $functions_file" >&2
+    exit 1
+fi
+# shellcheck source=SCRIPTDIR/claude-wrapper-functions.sh
+source "$functions_file"
+
 image="${launcher_dir}/claude-mod.sif"
+env_config="${launcher_dir}/claude-env.conf"
 bind_config="${launcher_dir}/claude-bind.conf"
 path_config="${launcher_dir}/claude-path.conf"
 exclude_config="${launcher_dir}/claude-exclude.conf"
-env_config="${launcher_dir}/claude-env.conf"
 
-host_home="${HOME:?Error: HOME is not set}"
+# --- Module options -----------------------------------------------------------
+# Take the module's own options out of the arguments; everything else is meant
+# for Claude. Scanning stops at "--", which is passed on with everything after
+# it. --bind values are only syntax-checked here; their paths are checked under
+# "User binds". Sets: show_help, user_bind_specs, claude_args.
+show_help=false
+user_bind_specs=()
+claude_args=()
+while (( $# > 0 )); do
+    case "$1" in
+        --)
+            claude_args+=("$@")
+            break
+            ;;
+        --ycrc-help)
+            show_help=true
+            ;;
+        --bind=*)
+            add_user_bind_specs "${1#--bind=}"
+            ;;
+        --bind|-B)
+            if (( $# < 2 )); then
+                die "$1 requires a directory, e.g. $1 DIR or $1 DIR:rw"
+            fi
+            add_user_bind_specs "$2"
+            shift
+            ;;
+        *)
+            claude_args+=("$1")
+            ;;
+    esac
+    shift
+done
+
+# --- Help ---------------------------------------------------------------------
+# `claude --ycrc-help` prints module usage and exits before every other check,
+# so it works anywhere: on a login node, without CLUSTER, in any directory.
+if [[ "$show_help" == true ]]; then
+    print_ycrc_help
+    exit 0
+fi
+
+# --- Required environment -----------------------------------------------------
+# HOME locates the user's home and Claude state; CLUSTER selects the storage
+# layout. USER falls back to the account name.
+if [[ -z "${HOME:-}" ]]; then
+    die "HOME is not set"
+fi
+if [[ -z "${CLUSTER:-}" ]]; then
+    die "CLUSTER is not set"
+fi
+host_home="$HOME"
 user_name="${USER:-$(id -un)}"
-cluster_name="${CLUSTER:?Error: CLUSTER is not set}"
+cluster_name="$CLUSTER"
 
-# Claude must run on an allocated compute node, not on a login node.
+# --- Login-node protection ----------------------------------------------------
+# Claude must run on an allocated compute node. Any short hostname containing
+# "login" (case-insensitive) is refused.
 if ! host_name="$(hostname -s)"; then
-    echo "Error: cannot determine the current hostname." >&2
-    exit 1
+    die "cannot determine the current hostname."
 fi
-
 if [[ "${host_name,,}" == *login* ]]; then
-    echo "Error: Claude cannot be launched on a login node: $host_name" >&2
-    echo "Allocate a compute node before running Claude." >&2
-    exit 1
+    die "Claude cannot be launched on a login node: $host_name" \
+        "Allocate a compute node before running Claude."
 fi
 
-if [[ ! -r "$bind_config" ]]; then
-    echo "Error: bind configuration not found or not readable: $bind_config" >&2
-    exit 1
-fi
-
-if [[ ! -r "$path_config" ]]; then
-    echo "Error: PATH configuration not found or not readable: $path_config" >&2
-    exit 1
-fi
-
-if [[ ! -r "$exclude_config" ]]; then
-    echo "Error: exclusion configuration not found or not readable: $exclude_config" >&2
-    exit 1
-fi
-
-if [[ ! -r "$env_config" ]]; then
-    echo "Error: environment configuration not found or not readable: $env_config" >&2
-    exit 1
-fi
-
-# Remove exported variables whose names match an administrator-configured Bash
-# glob. Required wrapper variables are protected from overly broad patterns.
-sensitive_env_patterns=()
-# shellcheck source=claude-env.conf
-source "$env_config"
-
-if [[ "$(declare -p sensitive_env_patterns 2>/dev/null)" != "declare -a "* ]]; then
-    echo "Error: $env_config must define an indexed array named sensitive_env_patterns." >&2
-    exit 1
-fi
-
-required_env_names=(HOME USER PATH CLUSTER)
-for sensitive_pattern in "${sensitive_env_patterns[@]}"; do
-    if [[ -z "$sensitive_pattern" ]]; then
-        echo "Error: empty environment-variable pattern in $env_config." >&2
-        exit 1
+# --- Environment scrubbing ----------------------------------------------------
+# Unset exported variables whose names match the administrator's glob patterns
+# (tokens, keys, passwords, ...) so the container never inherits them. Names
+# are reported, values never. A pattern may not match a variable this script
+# needs (HOME, USER, PATH, CLUSTER), so an overly broad pattern cannot break it.
+# Reads: claude-env.conf. Sets: sensitive_env_patterns.
+load_config_array "$env_config" sensitive_env_patterns "environment"
+# shellcheck disable=SC2154  # filled by load_config_array
+for pattern in "${sensitive_env_patterns[@]}"; do
+    if [[ -z "$pattern" ]]; then
+        die "empty environment-variable pattern in $env_config."
     fi
-
-    for required_env_name in "${required_env_names[@]}"; do
-        if [[ "$required_env_name" == $sensitive_pattern ]]; then
-            echo "Error: environment pattern '$sensitive_pattern' matches required variable $required_env_name." >&2
-            exit 1
+    for required_name in HOME USER PATH CLUSTER; do
+        # shellcheck disable=SC2053  # the pattern is a glob on purpose
+        if [[ "$required_name" == $pattern ]]; then
+            die "environment pattern '$pattern' matches required variable $required_name."
         fi
     done
 done
 
-while IFS= read -r exported_env_name; do
-    for sensitive_pattern in "${sensitive_env_patterns[@]}"; do
-        if [[ "$exported_env_name" == $sensitive_pattern ]]; then
-            unset "$exported_env_name"
-            printf 'Warning: unset sensitive environment variable: %s\n' "$exported_env_name"
+while IFS= read -r exported_name; do
+    for pattern in "${sensitive_env_patterns[@]}"; do
+        # shellcheck disable=SC2053  # the pattern is a glob on purpose
+        if [[ "$exported_name" == $pattern ]]; then
+            unset "$exported_name"
+            warn "unset sensitive environment variable: $exported_name"
             break
         fi
     done
 done < <(compgen -e)
 
-# These Claude state directories are required and must exist before the bind
-# array is processed. Other configured directories are optional and may be absent.
-claude_config_dir="${host_home}/.claude"
-claude_data_dir="${host_home}/.local/share/claude"
-claude_config_file="${host_home}/.claude.json"
+# --- Claude state -------------------------------------------------------------
+# Claude keeps its settings, sessions and installer data here; they must exist
+# before they are bound. Their binds come from claude-bind.conf.
+mkdir -p -- "${host_home}/.claude" "${host_home}/.local/share/claude"
 
-mkdir -p -- "$claude_config_dir" "$claude_data_dir"
-
-# This administrator-controlled file defines a Bash array named "binds".
-binds=()
-# shellcheck source=claude-bind.conf
-source "$bind_config"
-
-if [[ "$(declare -p binds 2>/dev/null)" != "declare -a "* ]]; then
-    echo "Error: $bind_config must define an indexed array named binds." >&2
-    exit 1
-fi
-
-configured_bind_opts=()
-configured_bind_roots=()
+# --- Admin binds --------------------------------------------------------------
+# Mount the administrator-configured directories; missing ones are skipped. A
+# symlinked entry is mounted at both its configured and its resolved path.
+# Reads: claude-bind.conf. Sets: binds, bind_entries, configured_bind_paths,
+# configured_bind_roots.
+bind_entries=()
 configured_bind_paths=()
+configured_bind_roots=()
+load_config_array "$bind_config" binds "bind"
+# shellcheck disable=SC2154  # filled by load_config_array
+for entry in "${binds[@]}"; do
+    split_bind_mode "$entry" "" "$bind_config"
+    require_bindable_path "$bind_path" "configured bind"
 
-for bind_entry in "${binds[@]}"; do
-    configured_mode=""
+    # Missing paths, including dangling symlinks, are optional and skipped.
+    [[ -e "$bind_path" ]] || continue
+    resolved="$(resolve_directory "$bind_path" "configured bind path")" || exit 1
 
-    case "$bind_entry" in
-        *:ro)
-            configured_path="${bind_entry%:ro}"
-            configured_mode="ro"
-            ;;
-        *:rw)
-            configured_path="${bind_entry%:rw}"
-            configured_mode="rw"
-            ;;
-        *:*)
-            echo "Error: invalid bind mode in $bind_config: $bind_entry" >&2
-            exit 1
-            ;;
-        *)
-            configured_path="$bind_entry"
-            ;;
-    esac
-
-    if [[ "$configured_path" != /* || "$configured_path" == / ]]; then
-        echo "Error: configured bind must be an absolute directory other than /: $configured_path" >&2
-        exit 1
-    fi
-
-    if [[ "$configured_path" == *,* ]]; then
-        echo "Error: configured bind path cannot contain ',': $configured_path" >&2
-        exit 1
-    fi
-
-    # Missing paths, including dangling symlinks, are optional and are skipped.
-    if [[ ! -e "$configured_path" ]]; then
-        continue
-    fi
-
-    if ! resolved_bind_path="$(realpath -e -- "$configured_path")"; then
-        echo "Error: cannot resolve configured bind path: $configured_path" >&2
-        exit 1
-    fi
-
-    if [[ ! -d "$resolved_bind_path" ]]; then
-        echo "Error: configured bind path is not a directory: $configured_path" >&2
-        exit 1
-    fi
-
-    # Resolve the host source, but preserve the configured path as the path
-    # visible inside the container. This makes entries containing $HOME and
-    # entries that are symlinks behave as their configuration suggests.
-    bind_spec="${resolved_bind_path}:${configured_path}"
-    if [[ -n "$configured_mode" ]]; then
-        bind_spec+=":${configured_mode}"
-    fi
-
-    configured_bind_opts+=(--bind "$bind_spec")
-
-    # Also expose a symlink target at its physical path. Conda environments in
-    # particular may record and use their resolved absolute prefix.
-    # This is important to accomodate references to logical or physical paths in users code
-    if [[ "$resolved_bind_path" != "$configured_path" ]]; then
-        physical_bind_spec="${resolved_bind_path}:${resolved_bind_path}"
-        if [[ -n "$configured_mode" ]]; then
-            physical_bind_spec+=":${configured_mode}"
-        fi
-        configured_bind_opts+=(--bind "$physical_bind_spec")
-    fi
-
-    configured_bind_roots+=("$resolved_bind_path")
-    configured_bind_paths+=("$configured_path")
+    add_bind_with_alias "$bind_path" "$resolved" "$bind_mode"
+    configured_bind_paths+=("$bind_path")
+    configured_bind_roots+=("$resolved")
 done
 
-# Add configured tool directories to the container PATH. Each PATH entry must
-# be covered by a configured bind so that it exists in the contained filesystem.
-path_entries=()
-# shellcheck source=claude-path.conf
-source "$path_config"
-
-if [[ "$(declare -p path_entries 2>/dev/null)" != "declare -a "* ]]; then
-    echo "Error: $path_config must define an indexed array named path_entries." >&2
-    exit 1
-fi
-
-container_path_entries=()
+# --- Container PATH -----------------------------------------------------------
+# Prepend bound tool directories (Slurm, /apps, ...) to PATH in the container.
+# Each entry must lie inside an admin bind, or it would not exist there.
+# Missing entries are skipped and duplicates removed.
+# Reads: claude-path.conf. Sets: path_entries, path_opts.
+load_config_array "$path_config" path_entries "PATH"
+container_path=()
 declare -A seen_path_entries=()
-
-for path_entry in "${path_entries[@]}"; do
-    if [[ "$path_entry" != /* || "$path_entry" == / ]]; then
-        echo "Error: configured PATH entry must be an absolute directory other than /: $path_entry" >&2
-        exit 1
+# shellcheck disable=SC2154  # filled by load_config_array
+for entry in "${path_entries[@]}"; do
+    require_bindable_path "$entry" "configured PATH entry"
+    [[ -e "$entry" ]] || continue
+    resolved="$(resolve_directory "$entry" "configured PATH entry")" || exit 1
+    if ! is_within_configured_bind "$entry" "$resolved"; then
+        die "configured PATH entry is not covered by a configured bind: $entry"
     fi
 
-    if [[ "$path_entry" == *:* || "$path_entry" == *,* ]]; then
-        echo "Error: configured PATH entry cannot contain ':' or ',': $path_entry" >&2
-        exit 1
-    fi
-
-    if [[ ! -e "$path_entry" ]]; then
-        continue
-    fi
-
-    if ! resolved_path_entry="$(realpath -e -- "$path_entry")"; then
-        echo "Error: cannot resolve configured PATH entry: $path_entry" >&2
-        exit 1
-    fi
-
-    if [[ ! -d "$resolved_path_entry" ]]; then
-        echo "Error: configured PATH entry is not a directory: $path_entry" >&2
-        exit 1
-    fi
-
-    path_entry_is_bound=false
-    for bind_index in "${!configured_bind_paths[@]}"; do
-        bind_path="${configured_bind_paths[$bind_index]}"
-        bind_root="${configured_bind_roots[$bind_index]}"
-
-        if [[ "$path_entry" == "$bind_path" ||
-              "$path_entry" == "${bind_path}/"* ||
-              "$resolved_path_entry" == "$bind_root" ||
-              "$resolved_path_entry" == "${bind_root}/"* ]]; then
-            path_entry_is_bound=true
-            break
-        fi
-    done
-
-    if [[ "$path_entry_is_bound" != true ]]; then
-        echo "Error: configured PATH entry is not covered by a configured bind: $path_entry" >&2
-        exit 1
-    fi
-
-    # Keep the logical path so symlinked prefixes such as /opt/slurm/current
-    # appear in PATH exactly as configured.
-    path_entry="${path_entry%/}"
-    if [[ -z "${seen_path_entries[$path_entry]+x}" ]]; then
-        container_path_entries+=("$path_entry")
-        seen_path_entries["$path_entry"]=1
+    # Keep the logical path so symlinked prefixes appear in PATH as configured.
+    entry="${entry%/}"
+    if [[ -z "${seen_path_entries[$entry]+x}" ]]; then
+        container_path+=("$entry")
+        seen_path_entries["$entry"]=1
     fi
 done
 
 path_opts=()
-if (( ${#container_path_entries[@]} > 0 )); then
-    container_prepend_path="$(IFS=:; printf '%s' "${container_path_entries[*]}")"
-    path_opts+=(--env "PREPEND_PATH=${container_prepend_path}")
+if (( ${#container_path[@]} > 0 )); then
+    path_opts+=(--env "PREPEND_PATH=$(IFS=:; printf '%s' "${container_path[*]}")")
 fi
 
-# This file lists directories that are neither bound nor permitted as a working
-# directory. It is separate from binds so exclusion never grants visibility.
-excluded_workdirs=()
-# shellcheck source=claude-exclude.conf
-source "$exclude_config"
-
-if [[ "$(declare -p excluded_workdirs 2>/dev/null)" != "declare -a "* ]]; then
-    echo "Error: $exclude_config must define an indexed array named excluded_workdirs." >&2
-    exit 1
-fi
-
+# --- Exclusions ---------------------------------------------------------------
+# Directories that may never be the working directory, or be bound with
+# --bind. An exclusion does not hide anything that an admin bind exposes.
+# Missing entries are skipped with a warning.
+# Reads: claude-exclude.conf. Sets: excluded_workdirs, excluded_work_roots.
+load_config_array "$exclude_config" excluded_workdirs "exclusion"
 excluded_work_roots=()
-for excluded_path in "${excluded_workdirs[@]}"; do
-    if [[ "$excluded_path" != /* || "$excluded_path" == / ]]; then
-        echo "Error: excluded path must be an absolute directory other than /: $excluded_path" >&2
-        exit 1
-    fi
-
-    if [[ ! -e "$excluded_path" ]]; then
-        echo "Warning: skipping missing excluded path: $excluded_path" >&2
+# shellcheck disable=SC2154  # filled by load_config_array
+for entry in "${excluded_workdirs[@]}"; do
+    require_bindable_path "$entry" "excluded path"
+    if [[ ! -e "$entry" ]]; then
+        warn "skipping missing excluded path: $entry"
         continue
     fi
-
-    if ! resolved_excluded_path="$(realpath -e -- "$excluded_path")"; then
-        echo "Error: cannot resolve excluded path: $excluded_path" >&2
-        exit 1
-    fi
-
-    if [[ ! -d "$resolved_excluded_path" ]]; then
-        echo "Error: excluded path is not a directory: $excluded_path" >&2
-        exit 1
-    fi
-
-    excluded_work_roots+=("$resolved_excluded_path")
+    resolved="$(resolve_directory "$entry" "excluded path")" || exit 1
+    excluded_work_roots+=("$resolved")
 done
 
-# Project and scratch filesystems differ between clusters. Keep these as base
-# paths; each user's permitted roots are derived from their group memberships.
-case "${cluster_name,,}" in
-    bouchet)
-        storage_bases=(
-            /nfs/roberts/project
-            /nfs/roberts/scratch
-        )
-        ;;
-    grace|mccleary)
-        storage_bases=(
-            /gpfs/gibbs/project
-            /vast/palmer/scratch
-        )
-        ;;
-    *)
-        echo "Error: unsupported cluster: $cluster_name" >&2
-        echo "Supported clusters: bouchet, grace, and mccleary." >&2
-        exit 1
-        ;;
-esac
+# --- Working-directory policy -------------------------------------------------
+# Claude works in the directory it was launched from, resolved to its real
+# path. It must not be inside an admin bind or exclusion; it must be a
+# non-hidden subdirectory (not the root itself) of the user's home or of one of
+# their group's project, scratch or PI spaces (<base>/<group>/<user>); and it
+# must be readable, writable and searchable.
+# Sets: storage_bases, work_dir, allowed_roots.
+set_storage_bases "$cluster_name"
+work_dir="$(resolve_directory . "current working directory")" || exit 1
 
-# Claude operates in the directory from which the user invoked this launcher.
-# Resolve it before binding so sessions use one canonical path even when the
-# user entered the directory through a symlink.
-if ! work_dir="$(realpath -e -- .)"; then
-    echo "Error: cannot resolve the current working directory: $PWD" >&2
-    exit 1
-fi
-
-if [[ ! -d "$work_dir" ]]; then
-    echo "Error: the current working directory is not a directory: $work_dir" >&2
-    exit 1
-fi
-
-# Never allow a configured bind or explicitly excluded directory (or any of its
-# descendants) to become Claude's working tree.
-blocked_work_roots=("${configured_bind_roots[@]}" "${excluded_work_roots[@]}")
-for blocked_root in "${blocked_work_roots[@]}"; do
-    if [[ "$work_dir" == "$blocked_root" || "$work_dir" == "${blocked_root}/"* ]]; then
-        echo "Error: Claude cannot be launched from an administratively restricted directory:" >&2
-        echo "  $blocked_root" >&2
-        echo "Resolved current directory: $work_dir" >&2
-        exit 1
+for root in "${configured_bind_roots[@]}" "${excluded_work_roots[@]}"; do
+    if path_is_within "$work_dir" "$root"; then
+        die "Claude cannot be launched from an administratively restricted directory:" \
+            "  $root" "Resolved current directory: $work_dir"
     fi
 done
 
-# A valid work directory must be strictly below the user's home, project, or
-# scratch root. Hidden directories at any level below those roots are rejected.
-if ! home_root="$(realpath -e -- "$host_home")"; then
-    echo "Error: cannot resolve the home directory: $host_home" >&2
-    exit 1
-fi
-
-allowed_roots=("$home_root")
-
-# Users may belong to multiple groups, and any group can provide separate
-# project and scratch spaces. Users are not expected to have convenience links
-# to these spaces in their home directory.
-group_output="$(groups 2>/dev/null || true)"
-
-for group_name in $group_output; do
-    for storage_base in "${storage_bases[@]}"; do
-        storage_path="${storage_base}/${group_name}/${user_name}"
-
-        # A group space is optional: users may not have a directory provisioned
-        # under every group to which they belong.
-        [[ -d "$storage_path" ]] || continue
-
-        if ! storage_root="$(realpath -e -- "$storage_path")"; then
-            echo "Error: cannot resolve storage directory: $storage_path" >&2
-            exit 1
-        fi
-
-        allowed_roots+=("$storage_root")
-    done
-done
-
-is_non_hidden_subdirectory() {
-    local path="$1"
-    local root="$2"
-    local relative_path
-    local component
-    local -a components
-
-    # Requiring root/ rather than accepting root itself ensures that Claude is
-    # launched only from a subdirectory, never from an entire storage root.
-    [[ "$path" == "${root}/"* ]] || return 1
-    relative_path="${path#"${root}/"}"
-    IFS='/' read -r -a components <<< "$relative_path"
-
-    for component in "${components[@]}"; do
-        [[ "$component" == .* ]] && return 1
-    done
-
-    return 0
-}
-
+collect_allowed_roots
 work_dir_allowed=false
-for allowed_root in "${allowed_roots[@]}"; do
-    if is_non_hidden_subdirectory "$work_dir" "$allowed_root"; then
+for root in "${allowed_roots[@]}"; do
+    if is_non_hidden_subdirectory "$work_dir" "$root"; then
         work_dir_allowed=true
         break
     fi
 done
-
 if [[ "$work_dir_allowed" != true ]]; then
-    echo "Error: Claude must be launched from a non-hidden subdirectory of:" >&2
-    printf '  %s\n' "${allowed_roots[@]}" >&2
-    echo "Resolved current directory: $work_dir" >&2
-    exit 1
+    die "Claude must be launched from a non-hidden subdirectory of:" \
+        "$(printf '  %s\n' "${allowed_roots[@]}")" "Resolved current directory: $work_dir"
 fi
 
 if [[ ! -r "$work_dir" || ! -w "$work_dir" || ! -x "$work_dir" ]]; then
-    echo "Error: the working directory must be readable, writable, and searchable: $work_dir" >&2
-    exit 1
+    die "the working directory must be readable, writable, and searchable: $work_dir"
 fi
 
+# --- Launch prerequisites -----------------------------------------------------
 if ! command -v apptainer >/dev/null 2>&1; then
-    echo "Error: apptainer is not available. Load the Apptainer module first." >&2
-    exit 1
+    die "apptainer is not available. Load the Apptainer module first."
 fi
-
 if [[ ! -r "$image" ]]; then
-    echo "Error: Claude container not found or not readable: $image" >&2
-    exit 1
+    die "Claude container not found or not readable: $image"
 fi
 
-# Enable NVIDIA integration only when the host exposes both the NVIDIA control
-# device and at least one numbered GPU device. CPU-only nodes omit --nv.
+# The working directory is always mounted read-write at its real path.
+add_bind "$work_dir" "$work_dir" ""
+
+# An existing ~/.claude.json (legacy Claude state) is persisted; it is never
+# created here.
+if [[ -f "${host_home}/.claude.json" ]]; then
+    add_bind "${host_home}/.claude.json" "${host_home}/.claude.json" ""
+fi
+
+# --- User binds ---------------------------------------------------------------
+# Mount the directories the user named with --bind (read-only unless ":rw")
+# and tell Claude about them with --add-dir. System, hidden, excluded and home
+# paths are refused; paths that are already mounted (the work dir, admin binds)
+# are skipped with a note. A symlinked directory is mounted under both names.
+# Reads: user_bind_specs, work_dir. Adds to: bind_entries. Sets: add_dir_opts.
+add_user_binds
+
+# --- GPU support --------------------------------------------------------------
+# Enable NVIDIA integration only when the node has the NVIDIA control device
+# and at least one GPU device; CPU-only nodes omit --nv.
 gpu_opts=()
-if [[ -c /dev/nvidiactl ]] &&
-   compgen -G '/dev/nvidia[0-9]*' >/dev/null; then
+if [[ -c /dev/nvidiactl ]] && compgen -G '/dev/nvidia[0-9]*' >/dev/null; then
     gpu_opts+=(--nv)
 fi
 
-bind_opts=(
-    --bind "${work_dir}:${work_dir}"
-)
+# --- Bind ordering ------------------------------------------------------------
+# Emit the binds parent-first, so a nested bind is mounted on top of its
+# parent. Reads: bind_entries. Sets: bind_opts.
+build_bind_opts
 
-# Persist an existing legacy configuration file, but do not create or require it.
-if [[ -f "$claude_config_file" ]]; then
-    bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
-fi
-
-bind_opts+=("${configured_bind_opts[@]}")
-
-# claude-mod.def's %runscript executes /usr/bin/claude, so all
-# arguments after the image are passed directly to Claude.
+# --- Launch -------------------------------------------------------------------
+# --contain hides the host's home and /tmp; only the binds below are visible.
+# Argument groups, in order:
+#   gpu_opts     GPU support (--nv or nothing)
+#   path_opts    Container PATH (--env PREPEND_PATH=... or nothing)
+#   bind_opts    admin binds, the work dir, Claude state and user binds,
+#                parent-first
+#   image        the image's runscript runs /usr/bin/claude ...
+#   add_dir_opts ... with --add-dir=DIR for each user bind (the "=" form, since
+#                --add-dir takes several values and would swallow the prompt),
+#   claude_args  ... and every argument meant for Claude
 exec apptainer run \
     --contain \
     "${gpu_opts[@]}" \
@@ -438,4 +314,5 @@ exec apptainer run \
     "${bind_opts[@]}" \
     --pwd "$work_dir" \
     "$image" \
-    "$@"
+    "${add_dir_opts[@]}" \
+    "${claude_args[@]}"
