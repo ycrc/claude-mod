@@ -1,0 +1,1 @@
+Can I start a Claude session in my PI storage space? Exactly which directories am I allowed to start you from?

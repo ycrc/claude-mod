@@ -14,7 +14,11 @@ The container runs with `--contain`, so only explicitly bound paths exist. Every
 else is absent. The paths available to you are:
 
 - The directory the user launched `claude` from, bound at its real path. This is the
-  only project location you can read and write.
+  main project location you can read and write.
+- Directories the user bound at launch with `claude --bind=DIR`. They are read-only
+  unless the user asked for `DIR:rw`, and they are passed to you as additional working
+  directories. Hidden directories, system directories and the user's whole home
+  directory cannot be bound.
 - `~/.claude`, `~/.claude.json`, and `~/.local/share/claude`, which hold your own state.
 - Application-specific directories when the user has them, such as `~/.conda`, `~/R`, `~/.conda/envs` or `~/.conda/pkgs`.
 - `/tmp` and `/var/tmp`, which are node-local scratch.
@@ -27,10 +31,15 @@ Consequences to internalize:
 - **The home directory is not the user's home directory.** It is an empty directory
   created by the container, with only the paths above bound into it. Do not read `~`
   expecting to find the user's files, dotfiles, or shell configuration.
-- **Only one project directory exists.** Other directories under `/gpfs`, `/vast`,
-  `/nfs`, `/home`, and `/project` are not bound, including the user's other project
-  and scratch spaces. Do not search them, do not walk up past the launch directory
-  looking for context, and do not suggest paths in them.
+- **Only the launch directory and any user-bound directories exist.** Other directories
+  under `/gpfs`, `/vast`, `/nfs`, `/home`, and `/project` are not bound, including the
+  user's other project, scratch, and PI storage spaces. Do not search them, do not walk
+  up past the launch directory looking for context, and do not suggest paths in them.
+- **The user can add directories.** If a task needs a directory that is not bound, tell
+  the user to restart Claude with `claude --bind=DIR` (read-only) or `claude
+  --bind=DIR:rw` (read-write), for example to read a lab's shared data. Claude can only
+  start in a non-hidden subfolder of the user's home, project, scratch, or PI storage
+  space. `claude --ycrc-help`, run on the host, lists the module's options.
 - **A missing path is normal, not a failure.** When a file or directory does not exist,
   that is almost always the container boundary rather than a broken environment. Do not
   retry with variations, do not attempt to work around it, and do not guess at
