@@ -1,1 +1,0 @@
-Which directories on the cluster can you read and write in this session, and how could I give you access to more?

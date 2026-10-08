@@ -1,1 +1,0 @@
-What options does this YCRC Claude module add on top of Claude Code, and how do I see them?
