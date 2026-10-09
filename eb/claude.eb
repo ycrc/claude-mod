@@ -18,6 +18,7 @@ sources = [
     'claude-path.conf',
     'claude-exclude.conf',
     'claude-env.conf',
+    'claude-in-house.conf',
 ]
 
 checksums = [
@@ -33,6 +34,7 @@ postinstallcmds = [
     'chmod 0644 %(installdir)s/claude-path.conf',
     'chmod 0644 %(installdir)s/claude-exclude.conf',
     'chmod 0644 %(installdir)s/claude-env.conf',
+    'chmod 0644 %(installdir)s/claude-in-house.conf',
 ]
 
 modextrapaths = {
@@ -48,6 +50,7 @@ sanity_check_paths = {
         'claude-path.conf',
         'claude-exclude.conf',
         'claude-env.conf',
+        'claude-in-house.conf',
         'claude',
     ],
     'dirs': [],

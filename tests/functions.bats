@@ -98,6 +98,30 @@ load_functions() {
     assert_equal "${#binds[@]}" 0
 }
 
+@test "load_config_vars: missing file, unset or empty values, valid, inherited value cleared" {
+    load_functions
+    run load_config_vars "${SANDBOX}/missing.conf" "in-house" one
+    assert_failure
+    assert_output --partial "in-house configuration not found"
+
+    printf '%s\n' "one='a'" "two=''" > "${SANDBOX}/empty-value.conf"
+    run load_config_vars "${SANDBOX}/empty-value.conf" "in-house" one two
+    assert_failure
+    assert_output --partial "must set two"
+
+    printf '%s\n' "one='a'" "list=(x y)" > "${SANDBOX}/ok.conf"
+    load_config_vars "${SANDBOX}/ok.conf" "in-house" one list
+    assert_equal "$one" a
+    assert_equal "${list[1]}" y
+
+    # An exported value must not fill a gap left in the file.
+    export two=inherited
+    echo "one='a'" > "${SANDBOX}/gap.conf"
+    run load_config_vars "${SANDBOX}/gap.conf" "in-house" one two
+    assert_failure
+    assert_output --partial "must set two"
+}
+
 @test "split_bind_mode: modes, default, invalid" {
     load_functions
     split_bind_mode /a:ro "" label

@@ -3,7 +3,7 @@
 #
 # Each test gets a sandbox containing an EasyBuild-like install directory (the
 # wrapper, its functions file, fixture .conf files and an empty SIF), a fake
-# home directory, and stub commands (apptainer, hostname, groups, timeout) that
+# home directory, and stub commands (apptainer, hostname, groups, curl) that
 # come first on PATH. The wrapper is run under `env -i`, so results do not
 # depend on the caller's environment. See tests/README.md for requirements.
 
@@ -111,9 +111,24 @@ EOF
 #!/bin/bash
 echo "${STUB_GROUPS:-}"
 EOF
-    cat > "${STUB_DIR}/timeout" <<'EOF'
+    # The in-house service check. STUB_SERVICE: ok (default), down (connection
+    # fails), nomodel (200 without the model), or an HTTP status such as 502.
+    cat > "${STUB_DIR}/curl" <<'EOF'
 #!/bin/bash
-[[ "${STUB_PROBE:-ok}" == ok ]]
+printf '%s\0' "$@" > "${STUB_LOG_DIR}/curl.argv"
+format=""
+while (( $# > 0 )); do
+    [[ "$1" == -w ]] && { format="$2"; shift; }
+    shift
+done
+case "${STUB_SERVICE:-ok}" in
+    ok) body='{"object":"list","data":[{"id":"Qwen3.8-27B"},{"id":"Qwen3.8-27B-think"}]}'; code=200 ;;
+    nomodel) body='{"object":"list","data":[{"id":"Qwen3.8-27B-think"}]}'; code=200 ;;
+    down) echo "curl: (7) Failed to connect" >&2; exit 7 ;;
+    *) body='{"error":"stub"}'; code="$STUB_SERVICE" ;;
+esac
+printf '%s' "$body"
+printf '%b' "${format//%\{http_code\}/$code}"
 EOF
     chmod 0755 -- "${STUB_DIR}"/*
 }
@@ -138,7 +153,7 @@ run_wrapper() {
         "STUB_LOG_DIR=${STUB_LOG_DIR}"
     )
     local name
-    for name in STUB_HOSTNAME STUB_HOSTNAME_FAIL STUB_GROUPS STUB_PROBE; do
+    for name in STUB_HOSTNAME STUB_HOSTNAME_FAIL STUB_GROUPS STUB_SERVICE; do
         if [[ -n "${!name+x}" ]]; then
             candidate+=("${name}=${!name}")
         fi
@@ -165,6 +180,10 @@ run_wrapper() {
 
 apptainer_was_called() {
     [[ -f "${STUB_LOG_DIR}/apptainer.argv" ]]
+}
+
+curl_was_called() {
+    [[ -f "${STUB_LOG_DIR}/curl.argv" ]]
 }
 
 # Load the recorded apptainer argv into APPTAINER_ARGV.

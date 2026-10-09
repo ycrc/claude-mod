@@ -5,7 +5,8 @@
 # Runs Claude Code inside the claude-mod Apptainer image with safer defaults:
 # Claude sees only the directory it was started from, administrator-chosen
 # paths, and directories the user names with --bind; sensitive environment
-# variables are removed first; and it cannot run on a login node.
+# variables are removed first; and it cannot run on a login node. With
+# --in-house-model, Claude uses YCRC's in-house model instead of Anthropic's.
 # Full policy: docs/claude-wrapper.md.
 #
 # Launch sequence:
@@ -13,15 +14,18 @@
 #   2. Check required environment variables.
 #   3. Login-node protection.
 #   4. Environment scrubbing.
-#   5. Claude state directories.
-#   6. Admin binds (claude-bind.conf).
-#   7. Container PATH (claude-path.conf).
-#   8. Exclusions (claude-exclude.conf).
-#   9. Working-directory policy.
-#  10. Launch prerequisites (apptainer, image).
-#  11. User binds (--bind).
-#  12. GPU support.
-#  13. Bind ordering, then launch.
+#   5. In-house mode, if requested: conf, arguments, cluster, credential.
+#   6. Claude state directories.
+#   7. Admin binds (claude-bind.conf).
+#   8. Container PATH (claude-path.conf).
+#   9. Exclusions (claude-exclude.conf).
+#  10. Working-directory policy.
+#  11. Launch prerequisites (apptainer, image).
+#  12. User binds (--bind).
+#  13. GPU support.
+#  14. Bind ordering.
+#  15. In-house service check and session options, if requested.
+#  16. Launch.
 #
 # Files read, all beside this script:
 #   claude-wrapper-functions.sh   shared helpers and the longer steps
@@ -29,6 +33,7 @@
 #   claude-bind.conf              directories to bind and their modes
 #   claude-path.conf              bound tool directories to prepend to PATH
 #   claude-exclude.conf           directories that may not be the work dir
+#   claude-in-house.conf          the in-house model service (in-house mode only)
 #   claude-mod.sif                the Apptainer image
 # =============================================================================
 set -euo pipefail
@@ -50,14 +55,23 @@ env_config="${launcher_dir}/claude-env.conf"
 bind_config="${launcher_dir}/claude-bind.conf"
 path_config="${launcher_dir}/claude-path.conf"
 exclude_config="${launcher_dir}/claude-exclude.conf"
+in_house_config="${launcher_dir}/claude-in-house.conf"
 
 # --- Module options -----------------------------------------------------------
 # Take the module's own options out of the arguments; everything else is meant
 # for Claude. Scanning stops at "--", which is passed on with everything after
 # it. --bind values are only syntax-checked here; their paths are checked under
-# "User binds". Sets: show_help, user_bind_specs, claude_args.
+# "User binds". --model, --fallback-model and --settings stay in Claude's
+# arguments but are noted, because in-house mode restricts them; they are
+# checked once the in-house conf is loaded.
+# Sets: show_help, launch_mode, user_bind_specs, requested_models,
+# fallback_model_given, settings_given, claude_args.
 show_help=false
+launch_mode=default
 user_bind_specs=()
+requested_models=()
+fallback_model_given=false
+settings_given=false
 claude_args=()
 while (( $# > 0 )); do
     case "$1" in
@@ -67,6 +81,37 @@ while (( $# > 0 )); do
             ;;
         --ycrc-help)
             show_help=true
+            ;;
+        --in-house-model)
+            launch_mode=in-house
+            ;;
+        --in-house-model=*)
+            # Reserved for choosing among several in-house models later.
+            die "--in-house-model takes no value."
+            ;;
+        --model|--model=*|--fallback-model|--fallback-model=*|--settings|--settings=*)
+            option_name="${1%%=*}"
+            option_value=""
+            if [[ "$1" == *=* ]]; then
+                option_value="${1#*=}"
+                claude_args+=("$1")
+            elif (( $# > 1 )); then
+                option_value="$2"
+                claude_args+=("$1" "$2")
+                shift
+            else
+                # Claude reports the missing value itself.
+                claude_args+=("$1")
+            fi
+            case "$option_name" in
+                --model)
+                    if [[ -n "$option_value" ]]; then
+                        requested_models+=("$option_value")
+                    fi
+                    ;;
+                --fallback-model) fallback_model_given=true ;;
+                --settings) settings_given=true ;;
+            esac
             ;;
         --bind=*)
             add_user_bind_specs "${1#--bind=}"
@@ -147,6 +192,20 @@ while IFS= read -r exported_name; do
         fi
     done
 done < <(compgen -e)
+
+# --- In-house mode ------------------------------------------------------------
+# With --in-house-model, Claude talks to YCRC's in-house model service instead
+# of Anthropic. Checked here, before any other work: the conf and its values,
+# the --model / --fallback-model / --settings rules, the cluster and curl. Then
+# inherited provider settings (ANTHROPIC_*, CLAUDE_CODE_USE_*, ...) are removed
+# so nothing can redirect the session, and the user-scoped credential
+# "<netid>.claude" is exported for Apptainer to pass on; it identifies the user
+# to the service for accounting and is not a password. Claude state is shared
+# with the default mode, so nothing else changes until "In-house session" below.
+# Reads: claude-in-house.conf. Sets: in_house_*, ANTHROPIC_AUTH_TOKEN.
+if [[ "$launch_mode" == in-house ]]; then
+    prepare_in_house_mode
+fi
 
 # --- Claude state -------------------------------------------------------------
 # Claude keeps its settings, sessions and installer data here; they must exist
@@ -296,23 +355,60 @@ fi
 # parent. Reads: bind_entries. Sets: bind_opts.
 build_bind_opts
 
+# --- In-house session ---------------------------------------------------------
+# Last, after every local check, so local mistakes are reported without a
+# network wait. A quick GET /v1/models with the user's credential shows that
+# the service answers, that the model server behind it is up (the gateway
+# returns 502 when it is not), and that the configured model is offered; GET
+# requests are not counted as usage. Then the session's environment, Claude
+# options and banner are added (see add_in_house_claude_opts).
+# Sets: env_opts, mode_claude_opts (both empty in the default mode).
+env_opts=()
+mode_claude_opts=()
+if [[ "$launch_mode" == in-house ]]; then
+    service_name="${in_house_base_url#*://}"
+    service_name="${service_name%%/*}"
+    service_help="Try again later, or contact research.computing@yale.edu if it persists."
+    if ! service_reply="$(curl -sS --connect-timeout 3 -m 5 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${ANTHROPIC_AUTH_TOKEN}" \
+            "${in_house_base_url}/v1/models" 2>/dev/null)"; then
+        die "YCRC's in-house model service (${service_name}) isn't reachable right now." "$service_help"
+    fi
+    service_status="${service_reply##*$'\n'}"
+    case "$service_status" in
+        200) ;;
+        502) die "the in-house model service is up, but its model server isn't responding." "$service_help" ;;
+        *) die "the in-house model service returned HTTP ${service_status}." "$service_help" ;;
+    esac
+    # The quotes keep "Qwen3.8-27B" from matching only "Qwen3.8-27B-think".
+    if [[ "${service_reply%$'\n'*}" != *"\"${in_house_model}\""* ]]; then
+        die "the in-house model service doesn't offer ${in_house_model}." \
+            "The module's claude-in-house.conf may be out of date. $service_help"
+    fi
+    add_in_house_claude_opts
+fi
+
 # --- Launch -------------------------------------------------------------------
 # --contain hides the host's home and /tmp; only the binds below are visible.
 # Argument groups, in order:
-#   gpu_opts     GPU support (--nv or nothing)
-#   path_opts    Container PATH (--env PREPEND_PATH=... or nothing)
-#   bind_opts    admin binds, the work dir, Claude state and user binds,
-#                parent-first
-#   image        the image's runscript runs /usr/bin/claude ...
-#   add_dir_opts ... with --add-dir=DIR for each user bind (the "=" form, since
-#                --add-dir takes several values and would swallow the prompt),
-#   claude_args  ... and every argument meant for Claude
+#   gpu_opts         GPU support (--nv or nothing)
+#   path_opts        Container PATH (--env PREPEND_PATH=... or nothing)
+#   env_opts         in-house session environment (--env ... or nothing)
+#   bind_opts        admin binds, the work dir, Claude state and user binds,
+#                    parent-first
+#   image            the image's runscript runs /usr/bin/claude ...
+#   mode_claude_opts ... with in-house --settings and --append-system-prompt,
+#   add_dir_opts     ... --add-dir=DIR for each user bind (the "=" form, since
+#                    --add-dir takes several values and would swallow the prompt),
+#   claude_args      ... and every argument meant for Claude
 exec apptainer run \
     --contain \
     "${gpu_opts[@]}" \
     "${path_opts[@]}" \
+    "${env_opts[@]}" \
     "${bind_opts[@]}" \
     --pwd "$work_dir" \
     "$image" \
+    "${mode_claude_opts[@]}" \
     "${add_dir_opts[@]}" \
     "${claude_args[@]}"
