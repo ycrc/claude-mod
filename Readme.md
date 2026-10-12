@@ -3,7 +3,7 @@
 
 ## Choosing a harness
 
-All four launchers use the same Bouchet-local `Qwen3.8-27B` model and the same outer security boundary. In Bouchet validation with the packaged harness versions, their practical strengths were:
+All four launchers use the same Bouchet-local model (requested as the `ycrc-local` alias) and the same outer security boundary. In Bouchet validation with the packaged harness versions, their practical strengths were:
 
 - **Pi — Fast & flexible (recommended default):** fastest interactive experience and strongest overall balance of autonomy and flexibility.
 - **Copilot — Consistent & predictable:** particularly steady behavior across repeated HPC and security workflows.
@@ -62,12 +62,12 @@ Claude additionally retains its managed-settings policy inside the image. Codex,
 
 ## Local model
 
-The current Bouchet defaults use `Qwen3.8-27B` on the YCRC-local inference service.
+The harnesses request the model as `ycrc-local` (and `ycrc-local-think` for extended reasoning). The inference gateway rewrites that alias to whatever model vLLM is serving, so swapping the model needs no module rebuild; usage metrics are still recorded under the real model name. Only the context and output limits in `coding-agents-provider.conf`, `codex-config.toml` and `pi-models.json` are model-specific.
 
 - Claude: Anthropic-compatible endpoint.
 - Codex: OpenAI Responses API via the read-only `codex-config.toml` source.
 - Copilot: OpenAI-compatible local provider with `COPILOT_OFFLINE=true` to suppress Copilot's own automatic external-provider/startup activity; this does not disable Bouchet network access.
-- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model Qwen3.8-27B`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access.
+- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model ycrc-local`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access.
 
 The installed `coding-agents-provider.conf` owns the cluster, shared model/auth values, and Claude/Copilot endpoint values; the wrapper sources it after scrubbing inherited credentials. Codex's base URL remains in the administrator-owned `codex-config.toml`, while Pi's base URL remains in the administrator-owned `pi-models.json`; update those files together if the inference endpoint changes.
 
@@ -89,7 +89,7 @@ images/build.sh OUTDIR codex        # only Codex, on OUTDIR's existing base
 This writes `OUTDIR/coding-agents-<harness>.sif` and records the harness versions
 that shipped in `OUTDIR/versions.txt` (only Pi is pinned). Stage each image into
 `easybuild-sources/<letter>/<harness>-local/`, inject the checksums
-(`eb <harness>-local.eb --inject-checksums --force`), and install with
+(`eb <harness>-local.eb --inject-checksums --force`; after editing `AGENTS.md` or `etc/agents/`, first run `eb/make-site-tarball.sh`), and install with
 `services/bin/rebuild-when-idle.sh`, which builds the bundle and all four
 harness modules by default, or just the easyconfigs it is given. Installing a
 new version proceeds at once; rebuilding an installed one waits for no active

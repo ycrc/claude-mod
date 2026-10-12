@@ -52,7 +52,7 @@ Also test conflicting `APPTAINERENV_*` and `SINGULARITYENV_*` variables for Clau
 - Claude reaches only the configured Anthropic-compatible local endpoint.
 - Codex uses the managed Bouchet Responses provider and can perform file/shell tool use.
 - Copilot uses the configured local OpenAI-compatible provider with Copilot automatic external-provider/startup activity suppressed.
-- Pi uses the managed `bouchet/Qwen3.8-27B` provider, performs file/shell tool use, and starts with automatic startup/version-check/telemetry suppression enabled.
+- Pi uses the managed `bouchet/ycrc-local` provider, performs file/shell tool use, and starts with automatic startup/version-check/telemetry suppression enabled.
 - No client requires external login for its local-model workflow.
 
 ## Slurm

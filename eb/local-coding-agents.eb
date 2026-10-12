@@ -19,8 +19,9 @@ dependencies = [
 ]
 hiddendependencies = dependencies
 
-modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'
-modloadmsg = '\nSecure AI coding assistance for Bouchet using Qwen 3.8 27B locally with popular coding-agent interfaces. Code and prompts are processed locally without being sent to external AI providers.\n'
+# The model is named generically: it is served behind the ycrc-local alias and
+# can change without a module rebuild.
+modloadmsg = '\nSecure AI coding assistance for Bouchet using the YCRC-hosted local model with popular coding-agent interfaces. Code and prompts are processed locally without being sent to external AI providers.\n'
 modloadmsg += '\nChoose a harness based on your workflow:\n'
 modloadmsg += '  pi       - Fast & flexible (recommended)\n'
 modloadmsg += '  copilot  - Consistent & structured\n'

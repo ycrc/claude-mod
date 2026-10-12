@@ -1,7 +1,7 @@
 ---
 name: deep-reasoning
 description: Delegate a sub-problem that needs careful step-by-step deliberation rather than speed — tricky debugging where the cause is not obvious, choosing between algorithms or numerical methods, or checking work where a subtly wrong answer would be costly. Returns a reasoned conclusion.
-model: Qwen3.8-27B-think
+model: ycrc-local-think
 tools: Bash, Read, Grep, Glob
 ---
 

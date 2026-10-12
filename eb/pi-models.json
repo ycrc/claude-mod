@@ -6,12 +6,12 @@
       "apiKey": "$YCRC_PI_API_KEY",
       "models": [
         {
-          "id": "Qwen3.8-27B",
+          "id": "ycrc-local",
           "contextWindow": 262000,
           "maxTokens": 16384
         },
         {
-          "id": "Qwen3.8-27B-think",
+          "id": "ycrc-local-think",
           "contextWindow": 262000,
           "maxTokens": 16384
         }

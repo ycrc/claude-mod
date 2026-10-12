@@ -1,5 +1,5 @@
 # YCRC-managed defaults for Codex on Bouchet.
-model = "Qwen3.8-27B"
+model = "ycrc-local"
 model_provider = "bouchet"
 model_context_window = 262000
 model_max_output_tokens = 16384

@@ -2,7 +2,7 @@
 name: deep-reasoning
 description: Delegate a difficult isolated problem that benefits from extra deliberation - diagnosing a non-obvious failure, reasoning about an algorithm or numerical method, resolving conflicting evidence, planning a complicated refactor, analyzing scheduler or resource behaviour, or checking a conclusion where a subtle mistake would be expensive. Do not use for routine file reads, searches, edits, or simple commands.
 tools: read, grep, find, ls, bash
-model: Qwen3.8-27B-think
+model: ycrc-local-think
 ---
 
 You handle sub-problems that justify deliberation.
