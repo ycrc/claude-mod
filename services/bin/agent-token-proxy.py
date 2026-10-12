@@ -67,6 +67,26 @@ CLUSTER = os.environ.get("PROXY_CLUSTER", "bouchet")
 # that reaches here from all four. Set empty to disable the feature.
 THINK_SUFFIX = os.environ.get("PROXY_THINK_SUFFIX", "-think")
 
+# Reasoning-effort normalisation. The Qwen3.8 chat templates (27B and
+# Flash-Next alike) accept only low / medium / xhigh and reject anything else
+# with HTTP 400 -- 3 user-facing failures on 2026-10-09 from Claude Code, whose
+# default effort is "high". Harnesses send other vocabularies (Codex: none,
+# minimal, high; Claude Code: high, max), in different fields per wire format.
+# Every effort a client sends is mapped onto the template's vocabulary; "off"
+# means "turn reasoning off for this request". Values not in the map are
+# dropped so the server default applies, never forwarded to fail.
+# Designed for Flash-Next with low as the server default: "high" (Claude
+# Code's default, not a user choice) maps to medium, and xhigh -- which cost
+# 3-7x the tokens for no quality gain in the 2026-10 evaluation -- is reached
+# only on an explicit xhigh/max request. Override with PROXY_EFFORT_MAP (JSON).
+EFFORT_MAP = json.loads(os.environ.get("PROXY_EFFORT_MAP") or json.dumps({
+    "none": "off", "minimal": "low", "low": "low", "medium": "medium",
+    "high": "medium", "xhigh": "xhigh", "max": "xhigh"}))
+# Effort for the virtual "-think" model when the request names none, so that
+# "think harder" still means something once reasoning is on by default.
+# Empty: leave it to the template (whose own default is xhigh).
+THINK_EFFORT = os.environ.get("PROXY_THINK_EFFORT", "medium")
+
 # Unattributed-client log. Requests that carry no usable identity (no key,
 # the shared upstream key, or a malformed credential) are summarised here so
 # the client can be traced: by address (-> node -> Slurm job owner) and
@@ -250,6 +270,65 @@ def totals(found):
 # ---------------------------------------------------------------------------
 # Request rewriting
 # ---------------------------------------------------------------------------
+def normalise_effort(payload):
+    """Map every reasoning-effort field in `payload` onto the template's
+    vocabulary (see EFFORT_MAP). Returns (changed, effort_seen)."""
+    changed = False
+    seen = False
+
+    def mapped(value):
+        if not isinstance(value, str):
+            return None
+        return EFFORT_MAP.get(value.strip().lower())
+
+    def turn_off():
+        kw = payload.get("chat_template_kwargs")
+        if not isinstance(kw, dict):
+            kw = {}
+        kw["enable_thinking"] = False
+        kw.pop("reasoning_effort", None)
+        payload["chat_template_kwargs"] = kw
+
+    # Chat Completions: top-level reasoning_effort, and chat_template_kwargs.
+    for holder, key in ((payload, "reasoning_effort"),
+                        (payload.get("chat_template_kwargs"), "reasoning_effort")):
+        if isinstance(holder, dict) and key in holder:
+            seen = True
+            m = mapped(holder[key])
+            if m == "off":
+                holder.pop(key, None); turn_off()
+            elif m is None:
+                holder.pop(key, None)
+            elif m != holder[key]:
+                holder[key] = m
+            else:
+                continue
+            changed = True
+    # Responses API: reasoning.effort.
+    rs = payload.get("reasoning")
+    if isinstance(rs, dict) and "effort" in rs:
+        seen = True
+        m = mapped(rs["effort"])
+        if m == "off":
+            rs.pop("effort", None); turn_off(); changed = True
+        elif m is None:
+            rs.pop("effort", None); changed = True
+        elif m != rs["effort"]:
+            rs["effort"] = m; changed = True
+    # Anthropic Messages: output_config.effort (Claude Code).
+    oc = payload.get("output_config")
+    if isinstance(oc, dict) and "effort" in oc:
+        seen = True
+        m = mapped(oc["effort"])
+        if m == "off":
+            oc.pop("effort", None); payload["thinking"] = {"type": "disabled"}; changed = True
+        elif m is None:
+            oc.pop("effort", None); changed = True
+        elif m != oc["effort"]:
+            oc["effort"] = m; changed = True
+    return changed, seen
+
+
 def rewrite_request(path, body):
     """Apply request rewrites; return (body, model-to-account-under).
 
@@ -291,6 +370,15 @@ def rewrite_request(path, body):
             kw = {}
         kw.setdefault("enable_thinking", True)
         payload["chat_template_kwargs"] = kw
+        changed = True
+        think_requested = True
+    else:
+        think_requested = False
+
+    eff_changed, effort_seen = normalise_effort(payload)
+    changed = changed or eff_changed
+    if think_requested and THINK_EFFORT and not effort_seen:
+        payload["chat_template_kwargs"]["reasoning_effort"] = THINK_EFFORT
         changed = True
 
     # Codex multi-agent emits "agent_message" items into the Responses API
