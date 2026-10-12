@@ -66,7 +66,7 @@ add that if you want the target to follow the job automatically.
 | `coding_agents_ttft_seconds` | histogram | `cluster`, `netid`, `agent` | Time to first byte, per netid |
 | `coding_agents_request_duration_seconds` | histogram | `cluster`, `netid`, `agent` | Full request duration, per netid |
 
-`agent` is one of `claude`, `codex`, `copilot`, `pi`.
+`agent` is one of `claude`, `codex`, `copilot`, `pi` (the module harnesses) or `claude-mod` (the module that drives this model from commercial Claude); `unknown` when the credential carries a netid but no recognised agent.
 
 ### Cardinality
 

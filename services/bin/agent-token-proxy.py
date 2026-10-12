@@ -79,7 +79,11 @@ HOP_BY_HOP = frozenset((
 ))
 
 NETID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
-VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi"))
+# The four module harnesses, plus claude-mod: the module that drives this
+# local model from commercial Claude. It sends "<netid>.claude-mod"; before
+# it did, its traffic arrived on the shared key and was counted as
+# "unattributed" (~95% of all tokens, 2026-10-06..12).
+VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod"))
 
 # Token fields across all three wire formats. Matching the individual fields
 # rather than the enclosing object keeps this robust when a usage block is

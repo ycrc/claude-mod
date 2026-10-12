@@ -61,7 +61,11 @@ VLLM_TIMEOUT = float(os.environ.get("COLLECTOR_VLLM_TIMEOUT", "3"))
 STATE_FLUSH_INTERVAL = int(os.environ.get("COLLECTOR_FLUSH_INTERVAL", "30"))
 MAX_BODY = 8192                 # a session record is ~300 bytes
 MAX_SERIES = 20000              # cardinality guard: netid x agent pairs
-VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi"))
+# The four module harnesses, plus claude-mod: the module that drives this
+# local model from commercial Claude. It sends "<netid>.claude-mod"; before
+# it did, its traffic arrived on the shared key and was counted as
+# "unattributed" (~95% of all tokens, 2026-10-06..12).
+VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod"))
 NETID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$", re.IGNORECASE)
 MAX_DURATION = 60 * 60 * 24 * 31   # clamp clock skew / bad records
 
