@@ -199,7 +199,8 @@ done < <(compgen -e)
 # the --model / --fallback-model / --settings rules, the cluster and curl. Then
 # inherited provider settings (ANTHROPIC_*, CLAUDE_CODE_USE_*, ...) are removed
 # so nothing can redirect the session, and the user-scoped credential
-# "<netid>.claude" is exported for Apptainer to pass on; it identifies the user
+# "<netid>.<label>" (label from claude-in-house.conf, "claude-mod") is exported
+# for Apptainer to pass on; it identifies the user
 # to the service for accounting and is not a password. Claude state is shared
 # with the default mode, so nothing else changes until "In-house session" below.
 # Reads: claude-in-house.conf. Sets: in_house_*, ANTHROPIC_AUTH_TOKEN.

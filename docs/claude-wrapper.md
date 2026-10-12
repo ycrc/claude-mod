@@ -476,7 +476,7 @@ the default mode. It contains no secrets.
 in_house_clusters=(bouchet)
 in_house_base_url='http://a1127u31n01.mghpcc.ycrc.yale.edu:8008'
 in_house_model='Qwen3.8-27B'
-in_house_agent_label='claude'       # credential is "<netid>.<label>"; the gateway knows claude, codex, copilot, pi
+in_house_agent_label='claude-mod'   # credential is "<netid>.<label>"; the gateway knows claude, codex, copilot, pi, claude-mod
 in_house_max_context='262000'
 in_house_max_output='16384'
 in_house_effort='medium'            # xhigh, medium or low; this vLLM rejects high and max
@@ -531,7 +531,7 @@ are reported without a network wait.
 
 ```bash
 curl -sS --connect-timeout 3 -m 5 -w '\n%{http_code}' \
-    -H "Authorization: Bearer <netid>.claude" <base_url>/v1/models
+    -H "Authorization: Bearer <netid>.claude-mod" <base_url>/v1/models
 ```
 
 It shows that the gateway answers, that vLLM behind it is up, and that the

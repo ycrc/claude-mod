@@ -153,12 +153,12 @@ curl_argv_contains() {
         fail "settings: $(claude_option --settings)"
 }
 
-@test "in-house: the credential is <id -un>.claude, from id -un, and not in argv" {
+@test "in-house: the credential is <id -un>.claude-mod, from id -un, and not in argv" {
     WRAPPER_ENV=(USER=someone-else)
     run_wrapper --in-house-model
     assert_success
     local expected
-    expected="$(id -un).claude"
+    expected="$(id -un).claude-mod"
     [[ "$(stub_environment ANTHROPIC_AUTH_TOKEN)" == "$expected" ]] ||
         fail "ANTHROPIC_AUTH_TOKEN: $(stub_environment ANTHROPIC_AUTH_TOKEN)"
     refute_argv_contains "$expected"
@@ -325,7 +325,7 @@ curl_argv_contains() {
     run_wrapper --in-house-model
     assert_success
     curl_argv_contains "${GATEWAY}/v1/models"
-    curl_argv_contains "Authorization: Bearer $(id -un).claude"
+    curl_argv_contains "Authorization: Bearer $(id -un).claude-mod"
     if tr '\0' '\n' < "${STUB_LOG_DIR}/curl.argv" | grep -Eqx -- '-X|--request|-d|--data.*'; then
         fail "the check is not a plain GET: $(tr '\0' ' ' < "${STUB_LOG_DIR}/curl.argv")"
     fi
