@@ -100,6 +100,25 @@ UNATTRIBUTED_LOG = os.environ.get(
 UNATTRIBUTED_FLUSH = float(os.environ.get("PROXY_UNATTRIBUTED_FLUSH", "300"))
 UNATTRIBUTED_MAX_KEYS = 2000   # bound memory if something sprays many agents/addresses
 
+# Per-user concurrency limit. With one shared engine, a single user with many
+# parallel requests (subagent fan-out, batch scripts) slows everyone: in the
+# 2026-10 evaluation one heavy user slowed others' sessions 4.1x on
+# Flash-Next. Each user may have at most USER_MAX_INFLIGHT inference requests
+# at the model; further requests wait here, in order, and so only slow that
+# user. A request that would make the user's queue longer than
+# USER_MAX_QUEUE, or that waits longer than USER_QUEUE_TIMEOUT seconds, gets
+# HTTP 429 (which the harnesses retry). Users are keyed by netid across all
+# agents; unattributed traffic by client address. Only inference (POST /v1/)
+# counts, and a slot is held until the response has finished streaming.
+# USER_MAX_INFLIGHT=0 disables the limit. PROXY_USER_LIMIT_EXEMPT is a
+# comma-separated list of netids that are never limited.
+USER_MAX_INFLIGHT = int(os.environ.get("PROXY_USER_MAX_INFLIGHT", "8"))
+USER_MAX_QUEUE = int(os.environ.get("PROXY_USER_MAX_QUEUE", "64"))
+USER_QUEUE_TIMEOUT = float(os.environ.get("PROXY_USER_QUEUE_TIMEOUT", "300"))
+USER_LIMIT_EXEMPT = frozenset(
+    x.strip() for x in os.environ.get("PROXY_USER_LIMIT_EXEMPT", "").split(",") if x.strip())
+USER_LIMIT_LOG_EVERY = 60   # seconds between throttling summaries in the log
+
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
 UPSTREAM_TIMEOUT = ClientTimeout(total=None, connect=10, sock_connect=10)
@@ -511,7 +530,139 @@ def forward_headers(src, netid, agent):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Per-user concurrency limit
+# ---------------------------------------------------------------------------
+class UserBusy(Exception):
+    """The user's queue is full or the wait timed out."""
+
+
+class UserSlots:
+    """At most USER_MAX_INFLIGHT concurrent holders per key, FIFO beyond that.
+
+    Entries exist only while a key has requests in flight or waiting, so
+    memory is bounded by live traffic, not by the number of users seen.
+    """
+
+    def __init__(self, limit, max_queue, timeout):
+        self.limit, self.max_queue, self.timeout = limit, max_queue, timeout
+        self._keys = {}    # key -> {"sem", "held", "waiting"}
+        # Throttling since the last summary: key -> [queued, rejected, max wait]
+        self.stats = {}
+
+    def _stat(self, key):
+        return self.stats.setdefault(key, [0, 0, 0.0])
+
+    async def acquire(self, key):
+        ent = self._keys.get(key)
+        if ent is None:
+            ent = self._keys[key] = {"sem": asyncio.Semaphore(self.limit),
+                                     "held": 0, "waiting": 0}
+        if ent["held"] < self.limit and ent["waiting"] == 0:
+            await ent["sem"].acquire()     # free slot: does not block
+            ent["held"] += 1
+            return
+        if ent["waiting"] >= self.max_queue:
+            self._stat(key)[1] += 1
+            self._drop_if_idle(key, ent)
+            raise UserBusy(f"more than {self.limit + self.max_queue} requests "
+                           "outstanding")
+        ent["waiting"] += 1
+        st = self._stat(key)
+        st[0] += 1
+        t0 = time.monotonic()
+        try:
+            # asyncio.timeout, not wait_for: on Python 3.11 wait_for can
+            # time out after the inner acquire succeeded, leaking a slot.
+            async with asyncio.timeout(self.timeout):
+                await ent["sem"].acquire()
+            ent["held"] += 1
+        except TimeoutError:
+            st[1] += 1
+            raise UserBusy(f"waited {self.timeout:g}s for one of the "
+                           f"{self.limit} concurrent request slots")
+        finally:
+            ent["waiting"] -= 1
+            st[2] = max(st[2], time.monotonic() - t0)
+            # Covers timeouts and client hang-ups while queued.
+            self._drop_if_idle(key, ent)
+
+    def release(self, key):
+        ent = self._keys.get(key)
+        if ent is None:
+            return
+        ent["held"] -= 1
+        ent["sem"].release()
+        self._drop_if_idle(key, ent)
+
+    def _drop_if_idle(self, key, ent):
+        if ent["held"] <= 0 and ent["waiting"] <= 0 and self._keys.get(key) is ent:
+            del self._keys[key]
+
+    def snapshot(self, key):
+        ent = self._keys.get(key)
+        return (ent["held"], ent["waiting"]) if ent else (0, 0)
+
+
+_user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
+
+
+def limit_key(netid, remote):
+    """Key the per-user limit applies to, or None if exempt/disabled."""
+    if USER_MAX_INFLIGHT <= 0 or netid in USER_LIMIT_EXEMPT:
+        return None
+    if netid == "unattributed":
+        return f"unattributed@{remote}"
+    return netid
+
+
+def busy_response(path, reason):
+    msg = (f"Too many concurrent requests for this user ({reason}). This "
+           f"shared model allows {USER_MAX_INFLIGHT} at a time per user; "
+           "please retry shortly.")
+    if path.startswith("/v1/messages"):
+        payload = {"type": "error",
+                   "error": {"type": "rate_limit_error", "message": msg}}
+    else:
+        payload = {"error": {"message": msg, "type": "rate_limit_error",
+                             "code": "rate_limit_exceeded"}}
+    return web.json_response(payload, status=429, headers={"Retry-After": "30"})
+
+
+async def user_limit_logger():
+    while True:
+        await asyncio.sleep(USER_LIMIT_LOG_EVERY)
+        try:
+            stats, _user_slots.stats = _user_slots.stats, {}
+            for key, (queued, rejected, wait) in sorted(stats.items()):
+                held, waiting = _user_slots.snapshot(key)
+                log(f"user limit: {key} queued={queued} rejected={rejected} "
+                    f"max_wait={wait:.1f}s now in_flight={held} waiting={waiting}")
+        except Exception as exc:
+            log(f"user limit logger error: {exc!r}")
+
+
 async def handle(request: web.Request):
+    key = None
+    if request.method == "POST" and request.rel_url.path.startswith("/v1/"):
+        try:
+            netid, _ = parse_identity(request.headers)
+            key = limit_key(netid, request.remote)
+        except Exception:
+            key = None     # limiting must never break inference
+    if key is None:
+        return await proxy(request)
+    try:
+        await _user_slots.acquire(key)
+    except UserBusy as exc:
+        return busy_response(request.rel_url.path, str(exc))
+    try:
+        return await proxy(request)
+    finally:
+        _user_slots.release(key)
+
+
+async def proxy(request: web.Request):
     path = request.rel_url.path
     url = f"{UPSTREAM}{request.rel_url}"
     netid, agent = parse_identity(request.headers)
@@ -621,6 +772,12 @@ async def on_startup(app):
     if UNATTRIBUTED_LOG:
         app["unattributed_flusher"] = asyncio.create_task(unattributed_flusher())
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
+    if USER_MAX_INFLIGHT > 0:
+        app["user_limit_logger"] = asyncio.create_task(user_limit_logger())
+        log(f"per-user limit: {USER_MAX_INFLIGHT} in flight, queue {USER_MAX_QUEUE}, "
+            f"wait {USER_QUEUE_TIMEOUT:g}s, exempt {sorted(USER_LIMIT_EXEMPT) or 'none'}")
+    else:
+        log("per-user limit: disabled")
 
 
 async def on_cleanup(app):
