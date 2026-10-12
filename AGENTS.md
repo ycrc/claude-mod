@@ -4,7 +4,7 @@ These are administrator-provided instructions for coding agents running on the Y
 
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, or scratch retention. Do not load every skill at startup.
+Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). Do not load every skill at startup.
 
 Available skills include:
 - `bouchet-storage`
@@ -23,6 +23,7 @@ Available skills include:
 - `bouchet-cryosparc`
 - `bouchet-mpi`
 - `bouchet-scratch`
+- `bouchet-easybuild-admin` (YCRC administrators; others are directed to a support ticket)
 
 ## Mandatory coding-agent controls
 
@@ -43,7 +44,7 @@ These coding-agent restrictions supplement YCRC policy. If a requested action co
 
 This module is for ordinary Bouchet user accounts and is intentionally configured for high autonomy inside the administrator-managed containment boundary. Routine user-scoped operations such as file deletion, process termination, Slurm submission, and cancellation of jobs the user is authorized to cancel may run without an approval prompt.
 
-Autonomy does not expand privileges. Unix permissions, Slurm authorization, the launcher bind policy, read-only mounts, and the rules in this file still apply. Never act on another user's jobs or data. Privileged YCRC administrator workflows require a separate administrative agent profile and are not part of this module.
+Autonomy does not expand privileges. Unix permissions, Slurm authorization, the launcher bind policy, read-only mounts, and the rules in this file still apply. Never act on another user's jobs or data. Privileged YCRC administrator workflows require a separate administrative agent profile and are not part of this module. The one exception is preparing and test-building central software with the `bouchet-easybuild-admin` skill, which itself verifies that the account is in the YCRC support group and directs everyone else to a support ticket; even then the agent never installs into `/apps` (production builds are run by the administrator outside the agent).
 
 ## Shell tool calls are isolated
 

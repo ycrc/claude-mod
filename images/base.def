@@ -38,7 +38,10 @@ From: rockylinux:9
     # downloads during harness startup. Bouchet itself has Internet access.
     dnf install -y epel-release
 
-    # Install runtime utilities required by the coding agents.
+    # Install runtime utilities required by the coding agents. glibc-langpack-en
+    # provides the en_US.UTF-8 locale users' sessions inherit; without it every
+    # shell warns on stderr, which breaks tools that parse command output
+    # (EasyBuild's `ulimit -u` check fails outright).
     dnf install -y \
         vim \
         bubblewrap \
@@ -50,7 +53,8 @@ From: rockylinux:9
         munge-libs \
         make \
         nodejs \
-        npm
+        npm \
+        glibc-langpack-en
 
     # Python test tooling. Agents routinely run a project's tests; without these,
     # `python` doesn't exist and `python3 -m pytest` fails, and agents spent many
