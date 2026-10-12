@@ -1,0 +1,71 @@
+easyblock = 'Binary'
+
+name = 'copilot-local'
+version = '1.1'
+# Loaded through local-coding-agents; not listed in `module avail`.
+hidden = True
+
+homepage = 'https://docs.ycrc.yale.edu/ai/aicodingtools/'
+description = """Sandboxed GitHub Copilot CLI for the YCRC-local model. One of the four harness
+modules bundled by local-coding-agents."""
+
+toolchain = SYSTEM
+
+# The launcher and shared configuration are the same files in every harness
+# module (the launcher reads its configuration only from its own directory);
+# the image and any harness configuration are this harness's own.
+sources = [
+    'coding-agents-copilot.sif',
+    'coding-agents-wrapper.sh',
+    'coding-agents-bind.conf',
+    'coding-agents-path.conf',
+    'coding-agents-exclude.conf',
+    'coding-agents-env.conf',
+    'coding-agents-provider.conf',
+    'coding-agents-site.tar.gz',
+]
+checksums = [
+    {'coding-agents-copilot.sif': '51d5c39f35b2691bbef336801d246df0796478562816f1730e247012eb383079'},
+    {'coding-agents-wrapper.sh': 'c5a28371115c5a797133aebaf4ece530508a13d210833ea22fb42577ec2192de'},
+    {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
+    {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
+    {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
+    {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
+    {'coding-agents-provider.conf': 'f1242d8ea04b15ee9ba137a60ef83bed5169f42764ee764b4d691343f5bc8cf0'},
+    {'coding-agents-site.tar.gz': '475f6f8806d2a09cefbc681616678d98c5d1e7c67cef1a69610f22107bc55d7a'},
+]
+
+postinstallcmds = [
+    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/copilot',
+    'chmod 0644 %(installdir)s/coding-agents-bind.conf',
+    'chmod 0644 %(installdir)s/coding-agents-path.conf',
+    'chmod 0644 %(installdir)s/coding-agents-exclude.conf',
+    'chmod 0644 %(installdir)s/coding-agents-env.conf',
+    'chmod 0644 %(installdir)s/coding-agents-provider.conf',
+    'mkdir -p %(installdir)s/share',
+    'tar -xzf %(installdir)s/coding-agents-site.tar.gz -C %(installdir)s/share',
+    'chmod -R a+rX %(installdir)s/share/agents',
+]
+
+modextrapaths = {'PATH': '.'}
+
+sanity_check_paths = {
+    'files': [
+        'coding-agents-copilot.sif',
+        'coding-agents-wrapper.sh',
+        'coding-agents-bind.conf',
+        'coding-agents-path.conf',
+        'coding-agents-exclude.conf',
+        'coding-agents-env.conf',
+        'coding-agents-provider.conf',
+        'coding-agents-site.tar.gz',
+        'share/agents/AGENTS.md', 'share/agents/skills/bouchet-storage/SKILL.md',
+        'share/agents/skills/bouchet-modules/SKILL.md',
+        'share/agents/subagents/deep-reasoning.md',
+        'share/agents/subagents/quick-task.md',
+        'copilot',
+    ],
+    'dirs': ['share/agents/skills', 'share/agents/subagents'],
+}
+
+moduleclass = 'devel'

@@ -22,12 +22,18 @@ Sandboxed YCRC coding-agent container/module for the Bouchet cluster, with share
 It exposes four commands from one EasyBuild module:
 
 ```bash
-module load coding-agents
+module load local-coding-agents
 claude
 codex
 copilot
 pi
 ```
+
+From 1.1, `local-coding-agents` is a bundle that loads four hidden modules, one
+per harness: `claude-local`, `codex-local`, `copilot-local` and `pi-local`. Each
+has its own image and launcher, so a harness can be upgraded without touching
+the others. They do not appear in `module avail`, but can be loaded directly for
+testing, e.g. `module load pi-local/.1.1`.
 
 All four clients share the same outer Apptainer containment and Bouchet storage policy. The launcher removes inherited credential-like environment variables and host-controlled Apptainer mount/environment overrides before injecting administrator-controlled local-model settings from an installed read-only provider configuration.
 
@@ -71,7 +77,27 @@ The wrapper creates only explicitly approved user state/package directories befo
 
 ## Build
 
-Build `coding-agents.sif` with `coding-agents.def`, then place the SIF and the files from `eb/` together as EasyBuild sources for `coding-agents.eb`.
+Images are layered: `images/base.def` holds everything the harnesses share
+(runtime tooling, Python and pytest, the policy and skills, the slurm account),
+and `images/<harness>.def` adds one client on top of it. Build on a compute node:
+
+```bash
+images/build.sh OUTDIR              # base + all four harness images
+images/build.sh OUTDIR codex        # only Codex, on OUTDIR's existing base
+```
+
+This writes `OUTDIR/coding-agents-<harness>.sif` and records the harness versions
+that shipped in `OUTDIR/versions.txt` (only Pi is pinned). Stage each image into
+`easybuild-sources/<letter>/<harness>-local/`, inject the checksums
+(`eb <harness>-local.eb --inject-checksums --force`), and install with
+`services/bin/rebuild-when-idle.sh`, which builds the bundle and all four
+harness modules by default, or just the easyconfigs it is given. Installing a
+new version proceeds at once; rebuilding an installed one waits for no active
+sessions.
+
+The launcher (`eb/coding-agents-wrapper.sh`) and the shared configuration in
+`eb/` are one copy in this repository, installed into every harness module: the
+launcher reads its configuration only from its own install directory.
 
 Before production deployment:
 

@@ -1,0 +1,25 @@
+Bootstrap: localimage
+From: {{ base }}
+
+# GitHub Copilot CLI on the shared base (images/base.def). Build with images/build.sh.
+
+%arguments
+    base=build/coding-agents-base.sif
+
+%post
+    set -eux
+
+    # Used only with the YCRC-local provider settings injected by the launcher.
+    npm install -g @github/copilot
+    npm cache clean --force
+
+%test
+    set -eu
+    /usr/local/libexec/coding-agents-base-test.sh
+    command -v copilot
+    # Copilot self-extracts into a writable user cache even for --version.
+    # Binary presence is validated above; runtime initialization is tested via the wrapper.
+
+%labels
+    Author YCRC
+    Description Sandboxed GitHub Copilot CLI for the YCRC-local model

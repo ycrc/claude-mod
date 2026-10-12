@@ -1,0 +1,24 @@
+Bootstrap: localimage
+From: {{ base }}
+
+# Pi on the shared base (images/base.def). Build with images/build.sh.
+
+%arguments
+    base=build/coding-agents-base.sif
+
+%post
+    set -eux
+
+    # Pinned to the release validated against the YCRC-local provider.
+    npm install -g @earendil-works/pi-coding-agent@0.85.1
+    npm cache clean --force
+
+%test
+    set -eu
+    /usr/local/libexec/coding-agents-base-test.sh
+    command -v pi
+    pi --version
+
+%labels
+    Author YCRC
+    Description Sandboxed Pi coding agent for the YCRC-local model

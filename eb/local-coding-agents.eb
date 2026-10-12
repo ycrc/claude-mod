@@ -1,85 +1,23 @@
-easyblock = 'Binary'
+easyblock = 'Bundle'
 
 name = 'local-coding-agents'
-version = '1.0'
+version = '1.1'
 
 homepage = 'https://docs.ycrc.yale.edu/ai/aicodingtools/'
 description = """Sandboxed Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, and Pi for YCRC clusters."""
 
 toolchain = SYSTEM
 
-sources = [
-    'coding-agents.sif',
-    'coding-agents-wrapper.sh',
-    'coding-agents-bind.conf',
-    'coding-agents-path.conf',
-    'coding-agents-exclude.conf',
-    'coding-agents-env.conf',
-    'coding-agents-provider.conf',
-    'codex-config.toml',
-    'pi-models.json',
-    'coding-agents-site.tar.gz',
+# Each harness is its own hidden module (eb/<harness>-local.eb) with its own
+# image, so one can be upgraded without rebuilding the others. This module
+# only loads all four; users see just local-coding-agents.
+dependencies = [
+    ('claude-local', version),
+    ('codex-local', version),
+    ('copilot-local', version),
+    ('pi-local', version),
 ]
-checksums = [
-    {'coding-agents.sif': '9ce345fc5ccbef7b6991b841451999fc81bd9c8cfb3f01aff39ec440ff795eeb'},
-    {'coding-agents-wrapper.sh': 'd2e7e5fd09e9dcd24983caf49439b4b17ebda629eb5d53b1d3c4c2f61cbeb32d'},
-    {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
-    {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
-    {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
-    {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
-    {'coding-agents-provider.conf': 'f1242d8ea04b15ee9ba137a60ef83bed5169f42764ee764b4d691343f5bc8cf0'},
-    {'codex-config.toml': '67c9c2fee98bf546c860a911e318f8342735719e723e9d2eb1ad82fc4adf7d9f'},
-    {'pi-models.json': 'e6b1a6a67677000c78d963d2f3ffaed7ac4fe0f43ca8b9ffa3a7858019854f94'},
-    {'coding-agents-site.tar.gz': '475f6f8806d2a09cefbc681616678d98c5d1e7c67cef1a69610f22107bc55d7a'},
-]
-
-postinstallcmds = [
-    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/claude',
-    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/codex',
-    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/copilot',
-    'install -m 0755 %(installdir)s/coding-agents-wrapper.sh %(installdir)s/pi',
-    'chmod 0644 %(installdir)s/coding-agents-bind.conf',
-    'chmod 0644 %(installdir)s/coding-agents-path.conf',
-    'chmod 0644 %(installdir)s/coding-agents-exclude.conf',
-    'chmod 0644 %(installdir)s/coding-agents-env.conf',
-    'chmod 0644 %(installdir)s/coding-agents-provider.conf',
-    'chmod 0644 %(installdir)s/codex-config.toml',
-    'chmod 0644 %(installdir)s/pi-models.json',
-    'mkdir -p %(installdir)s/share',
-    'tar -xzf %(installdir)s/coding-agents-site.tar.gz -C %(installdir)s/share',
-    'chmod -R a+rX %(installdir)s/share/agents',
-]
-
-modextrapaths = {'PATH': '.'}
-
-# Provider/site settings are sourced by the wrapper from the installed
-# coding-agents-provider.conf rather than trusted from mutable user environment variables.
-
-sanity_check_paths = {
-    'files': [
-        'coding-agents.sif', 'coding-agents-wrapper.sh',
-        'coding-agents-bind.conf', 'coding-agents-path.conf',
-        'coding-agents-exclude.conf', 'coding-agents-env.conf',
-        'coding-agents-provider.conf',
-        'codex-config.toml', 'pi-models.json', 'coding-agents-site.tar.gz',
-        'share/agents/AGENTS.md', 'share/agents/skills/bouchet-storage/SKILL.md',
-        'share/agents/skills/bouchet-conda/SKILL.md', 'share/agents/skills/bouchet-r/SKILL.md',
-        'share/agents/skills/bouchet-slurm/SKILL.md', 'share/agents/skills/bouchet-parallel/SKILL.md',
-        'share/agents/skills/bouchet-job-troubleshooting/SKILL.md',
-        'share/agents/skills/bouchet-dsq-arrays/SKILL.md', 'share/agents/skills/bouchet-gpu/SKILL.md',
-        'share/agents/skills/bouchet-priority/SKILL.md', 'share/agents/skills/bouchet-scavenge/SKILL.md',
-        'share/agents/skills/bouchet-apptainer/SKILL.md', 'share/agents/skills/bouchet-alphafold/SKILL.md',
-        'share/agents/skills/bouchet-cryosparc/SKILL.md', 'share/agents/skills/bouchet-mpi/SKILL.md',
-        'share/agents/skills/bouchet-scratch/SKILL.md',
-        'share/agents/skills/bouchet-modules/SKILL.md',
-        'share/agents/subagents/deep-reasoning.md',
-        'share/agents/subagents/quick-task.md',
-        'share/agents/pi-subagents/deep-reasoning.md',
-        'share/agents/pi-subagents/quick-task.md',
-        'claude', 'codex', 'copilot', 'pi',
-    ],
-    'dirs': ['share/agents/skills', 'share/agents/subagents', 'share/agents/pi-subagents'],
-}
+hiddendependencies = dependencies
 
 modloadmsg = '\nBouchet Coding Agents — local Qwen3.8-27B\n'
 modloadmsg = '\nSecure AI coding assistance for Bouchet using Qwen 3.8 27B locally with popular coding-agent interfaces. Code and prompts are processed locally without being sent to external AI providers.\n'

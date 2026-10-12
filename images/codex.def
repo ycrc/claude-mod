@@ -1,0 +1,34 @@
+Bootstrap: localimage
+From: {{ base }}
+
+# OpenAI Codex CLI on the shared base (images/base.def). Build with images/build.sh.
+
+%arguments
+    base=build/coding-agents-base.sif
+
+%post
+    set -eux
+
+    # Used only with the YCRC-local provider settings injected by the launcher.
+    npm install -g @openai/codex
+    npm cache clean --force
+
+    # Codex has a native administrator skill location. Keep the root as a real
+    # directory and link each administrator skill to the canonical tree.
+    mkdir -p /etc/codex/skills
+    for skill_dir in /etc/agents/skills/*; do
+        [ -d "$skill_dir" ] || continue
+        ln -sfn "$skill_dir" "/etc/codex/skills/$(basename "$skill_dir")"
+    done
+
+%test
+    set -eu
+    /usr/local/libexec/coding-agents-base-test.sh
+    command -v codex
+    test -L /etc/codex/skills/bouchet-conda
+    test "$(readlink /etc/codex/skills/bouchet-conda)" = "/etc/agents/skills/bouchet-conda"
+    codex --version
+
+%labels
+    Author YCRC
+    Description Sandboxed OpenAI Codex CLI for the YCRC-local model

@@ -26,7 +26,9 @@ METRICS="${METRICS_URL:-http://a1127u31n01.mghpcc.ycrc.yale.edu:9103/metrics}"
 # any shell command that happens to contain the image name -- including the
 # maintenance command about to run -- is reported as an active session.
 # The bracketed first character additionally stops the scan matching itself.
-SIF_PATTERN="${SIF_PATTERN:-[A]pptainer runtime parent: coding-agents\.sif}"
+# Matches the single image of module 1.0 (coding-agents.sif) and the
+# per-harness images of 1.1 onwards (coding-agents-<harness>.sif).
+SIF_PATTERN="${SIF_PATTERN:-[A]pptainer runtime parent: coding-agents(-[a-z]+)?\.sif}"
 
 command -v clush >/dev/null 2>&1 || { echo "error: clush not found" >&2; exit 2; }
 

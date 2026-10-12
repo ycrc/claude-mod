@@ -2,7 +2,6 @@
 set -euo pipefail
 
 launcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-image="${launcher_dir}/coding-agents.sif"
 bind_config="${launcher_dir}/coding-agents-bind.conf"
 path_config="${launcher_dir}/coding-agents-path.conf"
 exclude_config="${launcher_dir}/coding-agents-exclude.conf"
@@ -23,6 +22,9 @@ case "$agent" in
         exit 1
         ;;
 esac
+# Each harness module (claude-local, codex-local, ...) installs this launcher
+# beside its own image, so the image is chosen by the name it was invoked as.
+image="${launcher_dir}/coding-agents-${agent}.sif"
 
 # Derive identity from the account database rather than trusting mutable HOME/USER
 # environment variables. These values are part of the filesystem security boundary.
@@ -335,60 +337,64 @@ if [[ ! -f "$claude_config_file" ]]; then
 fi
 chmod 0600 "$claude_config_file"
 
-# Seed Codex with the administrator provider configuration on first use. Codex
-# persists project trust entries in config.toml, so this file must remain writable.
-# The surrounding CODEX_HOME is already a dedicated YCRC state directory.
-if [[ ! -s "${codex_home}/config.toml" ]]; then
-    install -m 0600 -- "$codex_config" "${codex_home}/config.toml"
-fi
-# Keep model sizing metadata current for existing Codex state while preserving
-# project trust entries and other Codex-managed state.
-codex_user_config="${codex_home}/config.toml"
-if grep -qE '^[[:space:]]*model_context_window[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E "s|^[[:space:]]*model_context_window[[:space:]]*=.*$|model_context_window = ${YCRC_AGENT_MAX_CONTEXT}|" "$codex_user_config"
-else
-    sed -i "/^model_provider[[:space:]]*=/a model_context_window = ${YCRC_AGENT_MAX_CONTEXT}" "$codex_user_config"
-fi
-if grep -qE '^[[:space:]]*model_max_output_tokens[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E "s|^[[:space:]]*model_max_output_tokens[[:space:]]*=.*$|model_max_output_tokens = ${YCRC_AGENT_MAX_OUTPUT}|" "$codex_user_config"
-else
-    sed -i "/^model_context_window[[:space:]]*=/a model_max_output_tokens = ${YCRC_AGENT_MAX_OUTPUT}" "$codex_user_config"
-fi
-# Normal-user autonomy profile: Codex does not prompt and does not add an
-# inner filesystem/process sandbox. The administrator-managed Apptainer
-# container remains the execution boundary.
-if grep -qE '^[[:space:]]*approval_policy[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E 's|^[[:space:]]*approval_policy[[:space:]]*=.*$|approval_policy = "never"|' "$codex_user_config"
-else
-    sed -i '/^model_max_output_tokens[[:space:]]*=/a approval_policy = "never"' "$codex_user_config"
-fi
-if grep -qE '^[[:space:]]*sandbox_mode[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E 's|^[[:space:]]*sandbox_mode[[:space:]]*=.*$|sandbox_mode = "danger-full-access"|' "$codex_user_config"
-else
-    sed -i '/^approval_policy[[:space:]]*=/a sandbox_mode = "danger-full-access"' "$codex_user_config"
-fi
-# Codex persists its own config.toml, so a user who has run Codex before keeps
-# whatever endpoint they were first given. If the inference service moves to a
-# different node, that stale value silently points them at a host that is no
-# longer serving, and the only fix would be deleting the file by hand. Re-apply
-# the endpoint from the administrator-managed config on every launch, the same
-# way the model sizing above is kept current. Only an existing key is rewritten:
-# base_url lives inside a [model_providers.*] table, so inserting one blind
-# could land it in the wrong table.
-codex_site_base_url="$(sed -nE 's|^[[:space:]]*base_url[[:space:]]*=[[:space:]]*"(.*)"[[:space:]]*$|\1|p' "$codex_config" | head -1)"
-if [[ -n "$codex_site_base_url" ]] \
-   && grep -qE '^[[:space:]]*base_url[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E "s|^[[:space:]]*base_url[[:space:]]*=.*$|base_url = \"${codex_site_base_url}\"|" "$codex_user_config"
-fi
+# Codex state is maintained only when launching Codex: since 1.1 each harness
+# is its own module, and only codex-local ships codex-config.toml.
+if [[ "$agent" == codex ]]; then
+    # Seed Codex with the administrator provider configuration on first use. Codex
+    # persists project trust entries in config.toml, so this file must remain writable.
+    # The surrounding CODEX_HOME is already a dedicated YCRC state directory.
+    if [[ ! -s "${codex_home}/config.toml" ]]; then
+        install -m 0600 -- "$codex_config" "${codex_home}/config.toml"
+    fi
+    # Keep model sizing metadata current for existing Codex state while preserving
+    # project trust entries and other Codex-managed state.
+    codex_user_config="${codex_home}/config.toml"
+    if grep -qE '^[[:space:]]*model_context_window[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E "s|^[[:space:]]*model_context_window[[:space:]]*=.*$|model_context_window = ${YCRC_AGENT_MAX_CONTEXT}|" "$codex_user_config"
+    else
+        sed -i "/^model_provider[[:space:]]*=/a model_context_window = ${YCRC_AGENT_MAX_CONTEXT}" "$codex_user_config"
+    fi
+    if grep -qE '^[[:space:]]*model_max_output_tokens[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E "s|^[[:space:]]*model_max_output_tokens[[:space:]]*=.*$|model_max_output_tokens = ${YCRC_AGENT_MAX_OUTPUT}|" "$codex_user_config"
+    else
+        sed -i "/^model_context_window[[:space:]]*=/a model_max_output_tokens = ${YCRC_AGENT_MAX_OUTPUT}" "$codex_user_config"
+    fi
+    # Normal-user autonomy profile: Codex does not prompt and does not add an
+    # inner filesystem/process sandbox. The administrator-managed Apptainer
+    # container remains the execution boundary.
+    if grep -qE '^[[:space:]]*approval_policy[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E 's|^[[:space:]]*approval_policy[[:space:]]*=.*$|approval_policy = "never"|' "$codex_user_config"
+    else
+        sed -i '/^model_max_output_tokens[[:space:]]*=/a approval_policy = "never"' "$codex_user_config"
+    fi
+    if grep -qE '^[[:space:]]*sandbox_mode[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E 's|^[[:space:]]*sandbox_mode[[:space:]]*=.*$|sandbox_mode = "danger-full-access"|' "$codex_user_config"
+    else
+        sed -i '/^approval_policy[[:space:]]*=/a sandbox_mode = "danger-full-access"' "$codex_user_config"
+    fi
+    # Codex persists its own config.toml, so a user who has run Codex before keeps
+    # whatever endpoint they were first given. If the inference service moves to a
+    # different node, that stale value silently points them at a host that is no
+    # longer serving, and the only fix would be deleting the file by hand. Re-apply
+    # the endpoint from the administrator-managed config on every launch, the same
+    # way the model sizing above is kept current. Only an existing key is rewritten:
+    # base_url lives inside a [model_providers.*] table, so inserting one blind
+    # could land it in the wrong table.
+    codex_site_base_url="$(sed -nE 's|^[[:space:]]*base_url[[:space:]]*=[[:space:]]*"(.*)"[[:space:]]*$|\1|p' "$codex_config" | head -1)"
+    if [[ -n "$codex_site_base_url" ]] \
+       && grep -qE '^[[:space:]]*base_url[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E "s|^[[:space:]]*base_url[[:space:]]*=.*$|base_url = \"${codex_site_base_url}\"|" "$codex_user_config"
+    fi
 
-# Codex takes its model only from this file, so the reasoning opt-in has to be
-# written here rather than passed as an environment variable like the others.
-if grep -qE '^[[:space:]]*model[[:space:]]*=' "$codex_user_config"; then
-    sed -i -E "s|^[[:space:]]*model[[:space:]]*=.*$|model = \"${agent_model}\"|" "$codex_user_config"
-else
-    sed -i "1i model = \"${agent_model}\"" "$codex_user_config"
+    # Codex takes its model only from this file, so the reasoning opt-in has to be
+    # written here rather than passed as an environment variable like the others.
+    if grep -qE '^[[:space:]]*model[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E "s|^[[:space:]]*model[[:space:]]*=.*$|model = \"${agent_model}\"|" "$codex_user_config"
+    else
+        sed -i "1i model = \"${agent_model}\"" "$codex_user_config"
+    fi
+    chmod 0600 "$codex_user_config"
 fi
-chmod 0600 "$codex_user_config"
 # Pi's managed models file is overlaid read-only at launch.
 touch -- "${pi_home}/models.json"
 
@@ -945,7 +951,7 @@ if [[ -n "${YCRC_AGENT_USAGE_ENDPOINT:-}" ]] && command -v curl >/dev/null 2>&1;
     {
         session_end="$(date +%s)"
         printf -v usage_record \
-            '{"netid":"%s","uid":%s,"agent":"%s","cluster":"%s","model":"%s","slurm_job":"%s","node":"%s","start_epoch":%s,"end_epoch":%s,"duration_s":%s,"exit":%s,"wrapper":"1.0"}' \
+            '{"netid":"%s","uid":%s,"agent":"%s","cluster":"%s","model":"%s","slurm_job":"%s","node":"%s","start_epoch":%s,"end_epoch":%s,"duration_s":%s,"exit":%s,"wrapper":"1.1"}' \
             "$user_name" "$(id -u)" "$agent" "${YCRC_CLUSTER:-unknown}" \
             "${YCRC_AGENT_MODEL:-unknown}" "${SLURM_JOB_ID:-}" "$host_name" \
             "$session_start" "$session_end" "$((session_end - session_start))" \

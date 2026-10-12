@@ -1,0 +1,38 @@
+Bootstrap: localimage
+From: {{ base }}
+
+# Claude Code on the shared base (images/base.def). Build with images/build.sh.
+
+%arguments
+    base=build/coding-agents-base.sif
+
+%files
+    etc/managed-settings.json /etc/claude-code/managed-settings.json
+    etc/yum.repos.d/claude-code.repo /etc/yum.repos.d
+
+%post
+    set -eux
+
+    # Install Claude Code. The binary is installed at /usr/bin/claude.
+    # For permissions, a Read deny also applies to Edit and Write, but only after
+    # 2.1.228, so ensure a floor on the release
+    dnf install -y "claude-code >= 2.1.228"
+
+    # Claude reads the canonical administrator policy as its managed CLAUDE.md.
+    ln -sfn /etc/agents/AGENTS.md /etc/claude-code/CLAUDE.md
+
+    dnf clean all
+    rm -rf /var/cache/dnf
+
+%test
+    set -eu
+    /usr/local/libexec/coding-agents-base-test.sh
+    test -x /usr/bin/claude
+    test -f /etc/claude-code/managed-settings.json
+    test -L /etc/claude-code/CLAUDE.md
+    test "$(readlink /etc/claude-code/CLAUDE.md)" = "/etc/agents/AGENTS.md"
+    /usr/bin/claude --version
+
+%labels
+    Author YCRC
+    Description Sandboxed Claude Code for the YCRC-local model

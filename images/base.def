@@ -1,0 +1,89 @@
+Bootstrap: docker
+From: rockylinux:9
+
+# Shared base for the four harness images (images/<harness>.def). Everything
+# the harnesses have in common lives here -- runtime tooling, the canonical
+# administrator policy and skills, the slurm account -- so that each harness
+# image only adds its own client and can be upgraded on its own. Build with
+# images/build.sh, run from the repository root.
+
+%files
+    AGENTS.md /etc/agents/AGENTS.md
+    etc/agents/skills /etc/agents/skills
+    images/base-test.sh /usr/local/libexec/coding-agents-base-test.sh
+
+%environment
+    # The cluster/module administrator controls upgrades by rebuilding
+    # the image rather than allowing in-container self-updates.
+    # TODO: Added these to managed settings, make sure they work
+    # export DISABLE_UPDATES=1
+    # export DISABLE_INSTALLATION_CHECKS=1
+
+%runscript
+    echo "Use the module-provided claude, codex, copilot, or pi launcher." >&2
+    exit 2
+
+%post
+    # Stable mount point for optional forwarded user ssh-agent sockets.
+    mkdir -p /run/ycrc-agent
+    chmod 0755 /run/ycrc-agent
+    set -eux
+
+    # Copilot CLI requires Node.js 22+. Select the Rocky 9 AppStream Node 22 stream
+    # before installing the shared runtime utilities.
+    dnf module reset -y nodejs
+    dnf module enable -y nodejs:22
+
+    # Install EPEL so Pi can use fd and ripgrep without attempting runtime
+    # downloads during harness startup. Bouchet itself has Internet access.
+    dnf install -y epel-release
+
+    # Install runtime utilities required by the coding agents.
+    dnf install -y \
+        vim \
+        bubblewrap \
+        fd-find \
+        ripgrep \
+        git \
+        openssh-clients \
+        ca-certificates \
+        munge-libs \
+        make \
+        nodejs \
+        npm
+
+    # Python test tooling. Agents routinely run a project's tests; without these,
+    # `python` doesn't exist and `python3 -m pytest` fails, and agents spent many
+    # turns (one run 17 minutes) hunting for a test runner in the 2026-10
+    # evaluation. pytest lives in Rocky 9's CRB repository.
+    dnf install -y dnf-plugins-core
+    dnf config-manager --set-enabled crb
+    dnf install -y \
+        python3-pytest \
+        python3-pip \
+        python-unversioned-command
+
+    chmod 0755 /usr/local/libexec/coding-agents-base-test.sh
+
+    # Remove package-manager caches to reduce the final image size.
+    dnf clean all
+    rm -rf /var/cache/dnf
+
+    # Create the slurm user account to mirror the clusters'
+    groupadd --system --gid 666 slurm
+    useradd \
+        --system \
+        --uid 666 \
+        --gid slurm \
+        --home-dir /var/lib/slurm \
+        --shell /sbin/nologin \
+        --no-create-home \
+        slurm
+
+%test
+    /usr/local/libexec/coding-agents-base-test.sh
+
+%labels
+    Author YCRC
+    Description Shared base for the sandboxed coding-agent images
+    BaseImage rockylinux:9
