@@ -40,6 +40,7 @@ Requires aiohttp (present in the serving conda env alongside vLLM).
 """
 
 import asyncio
+import collections
 import json
 import os
 import re
@@ -102,17 +103,25 @@ UNATTRIBUTED_MAX_KEYS = 2000   # bound memory if something sprays many agents/ad
 
 # Per-user concurrency limit. With one shared engine, a single user with many
 # parallel requests (subagent fan-out, batch scripts) slows everyone: in the
-# 2026-10 evaluation one heavy user slowed others' sessions 4.1x on
-# Flash-Next. Each user may have at most USER_MAX_INFLIGHT inference requests
-# at the model; further requests wait here, in order, and so only slow that
-# user. A request that would make the user's queue longer than
-# USER_MAX_QUEUE, or that waits longer than USER_QUEUE_TIMEOUT seconds, gets
-# HTTP 429 (which the harnesses retry). Users are keyed by netid across all
-# agents; unattributed traffic by client address. Only inference (POST /v1/)
-# counts, and a slot is held until the response has finished streaming.
-# USER_MAX_INFLIGHT=0 disables the limit. PROXY_USER_LIMIT_EXEMPT is a
-# comma-separated list of netids that are never limited.
+# 2026-10 evaluation one user holding 32 requests slowed others' sessions
+# 4.1x on Flash-Next. The limit is load-aware: ENGINE_BUDGET concurrent
+# requests (where Flash-Next's throughput knee was measured) are shared
+# equally among the users currently active, never fewer than
+# USER_MAX_INFLIGHT each. A user alone may use the whole budget (32); with
+# two active users each may have 16, three 10, four or more 8. Requests over
+# a user's share wait here, in order, and so only slow that user; requests
+# already running are never interrupted, so when someone new arrives a heavy
+# user drains down to the new share as their requests finish. A request that
+# would make the user's queue longer than USER_MAX_QUEUE, or that waits
+# longer than USER_QUEUE_TIMEOUT seconds, gets HTTP 429 (which the
+# harnesses retry). Users are keyed by netid across all agents; unattributed
+# traffic by client address. Only inference (POST /v1/) counts, and a slot
+# is held until the response has finished streaming.
+# USER_MAX_INFLIGHT=0 disables the limit; ENGINE_BUDGET=0 makes it a fixed
+# USER_MAX_INFLIGHT per user. PROXY_USER_LIMIT_EXEMPT is a comma-separated
+# list of netids that are never limited (and not counted as active).
 USER_MAX_INFLIGHT = int(os.environ.get("PROXY_USER_MAX_INFLIGHT", "8"))
+ENGINE_BUDGET = int(os.environ.get("PROXY_ENGINE_BUDGET", "32"))
 USER_MAX_QUEUE = int(os.environ.get("PROXY_USER_MAX_QUEUE", "64"))
 USER_QUEUE_TIMEOUT = float(os.environ.get("PROXY_USER_QUEUE_TIMEOUT", "300"))
 USER_LIMIT_EXEMPT = frozenset(
@@ -538,17 +547,24 @@ class UserBusy(Exception):
 
 
 class UserSlots:
-    """At most USER_MAX_INFLIGHT concurrent holders per key, FIFO beyond that.
+    """Per-key concurrency limit whose cap shrinks as more keys are active.
 
-    Entries exist only while a key has requests in flight or waiting, so
-    memory is bounded by live traffic, not by the number of users seen.
+    A key is active while it has requests in flight or waiting; entries
+    exist only then, so memory is bounded by live traffic, not by the number
+    of users seen. Each key's waiters are served FIFO.
     """
 
-    def __init__(self, limit, max_queue, timeout):
-        self.limit, self.max_queue, self.timeout = limit, max_queue, timeout
-        self._keys = {}    # key -> {"sem", "held", "waiting"}
+    def __init__(self, floor, budget, max_queue, timeout):
+        self.floor, self.budget = floor, budget
+        self.max_queue, self.timeout = max_queue, timeout
+        self._keys = {}    # key -> {"held": int, "queue": deque of futures}
         # Throttling since the last summary: key -> [queued, rejected, max wait]
         self.stats = {}
+
+    def cap(self):
+        if self.budget <= 0:
+            return self.floor
+        return max(self.floor, self.budget // max(len(self._keys), 1))
 
     def _stat(self, key):
         return self.stats.setdefault(key, [0, 0, 0.0])
@@ -556,55 +572,73 @@ class UserSlots:
     async def acquire(self, key):
         ent = self._keys.get(key)
         if ent is None:
-            ent = self._keys[key] = {"sem": asyncio.Semaphore(self.limit),
-                                     "held": 0, "waiting": 0}
-        if ent["held"] < self.limit and ent["waiting"] == 0:
-            await ent["sem"].acquire()     # free slot: does not block
+            ent = self._keys[key] = {"held": 0, "queue": collections.deque()}
+        if not ent["queue"] and ent["held"] < self.cap():
             ent["held"] += 1
             return
-        if ent["waiting"] >= self.max_queue:
+        if len(ent["queue"]) >= self.max_queue:
             self._stat(key)[1] += 1
             self._drop_if_idle(key, ent)
-            raise UserBusy(f"more than {self.limit + self.max_queue} requests "
-                           "outstanding")
-        ent["waiting"] += 1
+            raise UserBusy(f"{ent['held']} running and {len(ent['queue'])} "
+                           "waiting")
+        fut = asyncio.get_running_loop().create_future()
+        ent["queue"].append(fut)
         st = self._stat(key)
         st[0] += 1
         t0 = time.monotonic()
         try:
-            # asyncio.timeout, not wait_for: on Python 3.11 wait_for can
-            # time out after the inner acquire succeeded, leaking a slot.
             async with asyncio.timeout(self.timeout):
-                await ent["sem"].acquire()
-            ent["held"] += 1
-        except TimeoutError:
-            st[1] += 1
-            raise UserBusy(f"waited {self.timeout:g}s for one of the "
-                           f"{self.limit} concurrent request slots")
+                await fut
+        except BaseException as exc:
+            if fut.done() and not fut.cancelled():
+                # Granted at the same moment as the timeout or hang-up:
+                # hand the slot straight back.
+                self.release(key)
+            else:
+                fut.cancel()
+                try:
+                    ent["queue"].remove(fut)
+                except ValueError:
+                    pass
+                self._drop_if_idle(key, ent)
+            if isinstance(exc, TimeoutError):
+                st[1] += 1
+                raise UserBusy(f"waited {self.timeout:g}s for a request slot")
+            raise
         finally:
-            ent["waiting"] -= 1
             st[2] = max(st[2], time.monotonic() - t0)
-            # Covers timeouts and client hang-ups while queued.
-            self._drop_if_idle(key, ent)
 
     def release(self, key):
         ent = self._keys.get(key)
         if ent is None:
             return
         ent["held"] -= 1
-        ent["sem"].release()
         self._drop_if_idle(key, ent)
+        self._dispatch()
 
     def _drop_if_idle(self, key, ent):
-        if ent["held"] <= 0 and ent["waiting"] <= 0 and self._keys.get(key) is ent:
+        if ent["held"] <= 0 and not ent["queue"] and self._keys.get(key) is ent:
             del self._keys[key]
+            self._dispatch()    # one fewer active user: the others' share grows
+
+    def _dispatch(self):
+        cap = self.cap()
+        for ent in list(self._keys.values()):
+            q = ent["queue"]
+            while q and ent["held"] < cap:
+                fut = q.popleft()
+                if fut.done():      # cancelled while queued
+                    continue
+                ent["held"] += 1
+                fut.set_result(None)
 
     def snapshot(self, key):
         ent = self._keys.get(key)
-        return (ent["held"], ent["waiting"]) if ent else (0, 0)
+        return (ent["held"], len(ent["queue"])) if ent else (0, 0)
 
 
-_user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
+_user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), ENGINE_BUDGET,
+                        USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
 
 
 def limit_key(netid, remote):
@@ -618,8 +652,8 @@ def limit_key(netid, remote):
 
 def busy_response(path, reason):
     msg = (f"Too many concurrent requests for this user ({reason}). This "
-           f"shared model allows {USER_MAX_INFLIGHT} at a time per user; "
-           "please retry shortly.")
+           f"shared model currently allows {_user_slots.cap()} at a time per "
+           "user; please retry shortly.")
     if path.startswith("/v1/messages"):
         payload = {"type": "error",
                    "error": {"type": "rate_limit_error", "message": msg}}
@@ -637,7 +671,8 @@ async def user_limit_logger():
             for key, (queued, rejected, wait) in sorted(stats.items()):
                 held, waiting = _user_slots.snapshot(key)
                 log(f"user limit: {key} queued={queued} rejected={rejected} "
-                    f"max_wait={wait:.1f}s now in_flight={held} waiting={waiting}")
+                    f"max_wait={wait:.1f}s now in_flight={held} waiting={waiting} "
+                    f"cap={_user_slots.cap()} active_users={len(_user_slots._keys)}")
         except Exception as exc:
             log(f"user limit logger error: {exc!r}")
 
@@ -774,7 +809,10 @@ async def on_startup(app):
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
     if USER_MAX_INFLIGHT > 0:
         app["user_limit_logger"] = asyncio.create_task(user_limit_logger())
-        log(f"per-user limit: {USER_MAX_INFLIGHT} in flight, queue {USER_MAX_QUEUE}, "
+        share = (f"budget {ENGINE_BUDGET} shared by active users, at least "
+                 f"{USER_MAX_INFLIGHT} each" if ENGINE_BUDGET > 0
+                 else f"fixed {USER_MAX_INFLIGHT} each")
+        log(f"per-user limit: {share}, queue {USER_MAX_QUEUE}, "
             f"wait {USER_QUEUE_TIMEOUT:g}s, exempt {sorted(USER_LIMIT_EXEMPT) or 'none'}")
     else:
         log("per-user limit: disabled")
