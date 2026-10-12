@@ -76,7 +76,10 @@ THINK_SUFFIX = os.environ.get("PROXY_THINK_SUFFIX", "-think")
 # real model name, so metrics still show which model did the work. Requests
 # naming a real model pass through untouched. Set empty to disable.
 MODEL_ALIAS = os.environ.get("PROXY_MODEL_ALIAS", "ycrc-local")
-SERVED_MODEL_REFRESH = 60   # seconds between re-reads of vLLM's model list
+# Seconds between re-reads of vLLM's model list. Whenever vLLM cannot be read
+# the alias target is forgotten, so a vLLM restart with a different model is
+# re-learned on the first request after it comes back, not up to a minute later.
+SERVED_MODEL_REFRESH = float(os.environ.get("PROXY_SERVED_MODEL_REFRESH", "60"))
 
 # Reasoning-effort normalisation. The Qwen3.8 chat templates (27B and
 # Flash-Next alike) accept only low / medium / xhigh and reject anything else
@@ -688,23 +691,31 @@ def busy_response(path, reason):
 
 
 async def refresh_served_model():
-    """Learn the served model from vLLM; keep the last value on failure."""
+    """Learn the served model from vLLM.
+
+    If vLLM cannot be read (down, restarting, loading) the target is forgotten
+    rather than kept: the model may be different when it returns, and a stale
+    target would rewrite every alias request to a model that no longer exists.
+    proxy() re-resolves on the next request while the target is unknown.
+    """
     global _served_model
+    ids = []
     try:
         async with _session.get(
                 f"{UPSTREAM}/v1/models",
                 headers={"Authorization": f"Bearer {UPSTREAM_KEY}"},
                 timeout=ClientTimeout(total=5)) as r:
-            if r.status != 200:
-                return
-            data = (await r.json(content_type=None)).get("data") or []
-        ids = [m.get("id") for m in data if isinstance(m, dict)]
-        ids = [i for i in ids if isinstance(i, str) and i]
-        if ids and ids[0] != _served_model:
-            log(f"model alias {MODEL_ALIAS!r} -> {ids[0]!r}")
-            _served_model = ids[0]
+            if r.status == 200:
+                data = (await r.json(content_type=None)).get("data") or []
+                ids = [m.get("id") for m in data if isinstance(m, dict)]
+                ids = [i for i in ids if isinstance(i, str) and i]
     except Exception:
-        pass
+        ids = []
+    new = ids[0] if ids else None
+    if new != _served_model:
+        log(f"model alias {MODEL_ALIAS!r} -> {new!r}"
+            + ("" if new else " (vLLM unavailable; re-resolving on next request)"))
+        _served_model = new
 
 
 async def served_model_watcher():
