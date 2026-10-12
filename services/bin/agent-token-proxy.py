@@ -67,6 +67,19 @@ CLUSTER = os.environ.get("PROXY_CLUSTER", "bouchet")
 # that reaches here from all four. Set empty to disable the feature.
 THINK_SUFFIX = os.environ.get("PROXY_THINK_SUFFIX", "-think")
 
+# Unattributed-client log. Requests that carry no usable identity (no key,
+# the shared upstream key, or a malformed credential) are summarised here so
+# the client can be traced: by address (-> node -> Slurm job owner) and
+# User-Agent. Only metadata, never prompts or keys, and only for unattributed
+# traffic -- attributed users are already accounted under their netid.
+# Aggregated per (address, User-Agent, path, model, credential kind) and
+# written every UNATTRIBUTED_FLUSH seconds, so a busy client produces a few
+# lines rather than one per request. Set the path empty to disable.
+UNATTRIBUTED_LOG = os.environ.get(
+    "PROXY_UNATTRIBUTED_LOG", "/apps/services/coding-agents/state/unattributed.jsonl")
+UNATTRIBUTED_FLUSH = float(os.environ.get("PROXY_UNATTRIBUTED_FLUSH", "300"))
+UNATTRIBUTED_MAX_KEYS = 2000   # bound memory if something sprays many agents/addresses
+
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
 UPSTREAM_TIMEOUT = ClientTimeout(total=None, connect=10, sock_connect=10)
@@ -79,10 +92,10 @@ HOP_BY_HOP = frozenset((
 ))
 
 NETID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
-# The four module harnesses, plus claude-mod: the module that drives this
-# local model from commercial Claude. It sends "<netid>.claude-mod"; before
-# it did, its traffic arrived on the shared key and was counted as
-# "unattributed" (~95% of all tokens, 2026-10-06..12).
+# The four module harnesses, plus claude-mod: the module whose in-house mode
+# drives this local model from Claude Code. It sends "<netid>.<label>"; with
+# label "claude-mod" its usage gets its own series instead of sharing
+# "claude" with the coding-agents launcher.
 VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod"))
 
 # Token fields across all three wire formats. Matching the individual fields
@@ -139,6 +152,74 @@ def parse_identity(headers):
     if agent not in VALID_AGENTS:
         agent = "unknown"
     return netid, agent
+
+
+def credential_kind(headers):
+    """Why a request is unattributed, without ever recording the credential:
+    'none' (no key at all), 'shared-key' (the upstream key, i.e. a client
+    configured by hand from the published endpoint), or 'malformed'."""
+    auth = headers.get("Authorization", "")
+    raw = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    raw = raw or (headers.get("x-api-key") or "").strip()
+    if not raw:
+        return "none"
+    if raw == UPSTREAM_KEY:
+        return "shared-key"
+    return "malformed"
+
+
+_unattributed = {}   # (addr, user_agent, path, model, kind) -> counters
+
+
+def note_unattributed(addr, user_agent, path, model, kind, prompt, completion):
+    """Fold one unattributed request into the current window. Never raises."""
+    try:
+        ua = (user_agent or "-").replace("\n", " ").replace("\r", " ")[:200]
+        key = (addr or "-", ua, path, model or "unknown", kind)
+        rec = _unattributed.get(key)
+        if rec is None:
+            if len(_unattributed) >= UNATTRIBUTED_MAX_KEYS:
+                key = ("-", "(overflow)", path, model or "unknown", kind)
+                rec = _unattributed.get(key)
+            if rec is None:
+                rec = _unattributed[key] = {"requests": 0, "prompt_tokens": 0,
+                                            "completion_tokens": 0, "first": time.time()}
+        rec["requests"] += 1
+        rec["prompt_tokens"] += prompt
+        rec["completion_tokens"] += completion
+        rec["last"] = time.time()
+    except Exception:
+        pass
+
+
+def flush_unattributed():
+    """Append the window's summaries as JSON lines, then start a new window."""
+    global _unattributed
+    if not _unattributed or not UNATTRIBUTED_LOG:
+        return
+    window, _unattributed = _unattributed, {}
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        # group-readable at most: the file maps addresses to activity
+        fd = os.open(UNATTRIBUTED_LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
+        with os.fdopen(fd, "a") as fh:
+            for (addr, ua, path, model, kind), r in sorted(window.items()):
+                fh.write(json.dumps({
+                    "window_end": now, "client": addr, "user_agent": ua, "path": path,
+                    "model": model, "credential": kind, "requests": r["requests"],
+                    "prompt_tokens": r["prompt_tokens"],
+                    "completion_tokens": r["completion_tokens"],
+                    "first": datetime.fromtimestamp(r["first"], timezone.utc).isoformat(timespec="seconds"),
+                    "last": datetime.fromtimestamp(r["last"], timezone.utc).isoformat(timespec="seconds"),
+                }, separators=(",", ":")) + "\n")
+    except Exception as exc:
+        log(f"WARNING: could not write unattributed log ({exc})")
+
+
+async def unattributed_flusher():
+    while True:
+        await asyncio.sleep(UNATTRIBUTED_FLUSH)
+        flush_unattributed()
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +427,10 @@ async def handle(request: web.Request):
     path = request.rel_url.path
     url = f"{UPSTREAM}{request.rel_url}"
     netid, agent = parse_identity(request.headers)
+    unattrib = None
+    if netid == "unattributed":
+        unattrib = (request.remote, request.headers.get("User-Agent"),
+                    credential_kind(request.headers))
     # Monotonic: wall-clock jumps must not corrupt a latency sample.
     t0 = time.monotonic()
     ttft = None
@@ -418,6 +503,8 @@ async def handle(request: web.Request):
             # report TTFT (which did happen) but no duration.
             record_later(netid, agent, model, p, c, upstream.status, streamed,
                          ttft=ttft)
+            if unattrib:
+                note_unattributed(unattrib[0], unattrib[1], path, model, unattrib[2], p, c)
         raise
     except Exception as exc:
         log(f"stream error for {netid}/{agent} {path}: {exc!r}")
@@ -433,6 +520,8 @@ async def handle(request: web.Request):
         p, c = totals(found)
         record_later(netid, agent, model, p, c, upstream.status, streamed,
                      ttft=ttft, duration=time.monotonic() - t0)
+        if unattrib:
+            note_unattributed(unattrib[0], unattrib[1], path, model, unattrib[2], p, c)
     return out
 
 
@@ -441,9 +530,13 @@ async def on_startup(app):
     _session = ClientSession(auto_decompress=False)
     log(f"proxying {LISTEN_HOST}:{LISTEN_PORT} -> {UPSTREAM}")
     log(f"usage records -> {COLLECTOR_URL}")
+    if UNATTRIBUTED_LOG:
+        app["unattributed_flusher"] = asyncio.create_task(unattributed_flusher())
+        log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
 
 
 async def on_cleanup(app):
+    flush_unattributed()
     if _session:
         await _session.close()
 
