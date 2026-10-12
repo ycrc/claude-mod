@@ -68,6 +68,16 @@ CLUSTER = os.environ.get("PROXY_CLUSTER", "bouchet")
 # that reaches here from all four. Set empty to disable the feature.
 THINK_SUFFIX = os.environ.get("PROXY_THINK_SUFFIX", "-think")
 
+# Stable model alias. Harnesses, subagents and module configs ask for
+# MODEL_ALIAS (and MODEL_ALIAS + THINK_SUFFIX) rather than a real model name;
+# the gateway rewrites it to whatever vLLM is serving, learned from vLLM's own
+# /v1/models. Swapping the served model then needs only the vLLM launch to
+# change -- no module rebuild, no gateway change. Usage is accounted under the
+# real model name, so metrics still show which model did the work. Requests
+# naming a real model pass through untouched. Set empty to disable.
+MODEL_ALIAS = os.environ.get("PROXY_MODEL_ALIAS", "ycrc-local")
+SERVED_MODEL_REFRESH = 60   # seconds between re-reads of vLLM's model list
+
 # Reasoning-effort normalisation. The Qwen3.8 chat templates (27B and
 # Flash-Next alike) accept only low / medium / xhigh and reject anything else
 # with HTTP 400 -- 3 user-facing failures on 2026-10-09 from Claude Code, whose
@@ -162,6 +172,7 @@ COMPLETION_KEYS = ("completion_tokens", "output_tokens")
 SCAN_CARRY = 8192
 
 _session: ClientSession = None
+_served_model = None   # what vLLM serves; resolves MODEL_ALIAS
 
 
 def log(msg):
@@ -375,6 +386,9 @@ def rewrite_request(path, body):
     series and the extra token cost of thinking is visible rather than merged
     into normal usage.
 
+    The model alias (MODEL_ALIAS, after the thinking suffix is removed) is
+    replaced by the served model, and accounted under the real name.
+
     Anything unparseable is passed through untouched -- this sits in the
     inference path and must never reject a request it merely failed to read.
     """
@@ -402,6 +416,11 @@ def rewrite_request(path, body):
         think_requested = True
     else:
         think_requested = False
+
+    if MODEL_ALIAS and _served_model and payload.get("model") == MODEL_ALIAS:
+        payload["model"] = _served_model
+        changed = True
+        account_as = _served_model + (THINK_SUFFIX if think_requested else "")
 
     eff_changed, effort_seen = normalise_effort(payload)
     changed = changed or eff_changed
@@ -452,26 +471,31 @@ def rewrite_request(path, body):
         return body, account_as
 
 
-def add_think_variants(raw):
-    """Advertise the virtual thinking model in /v1/models.
+def add_virtual_models(raw):
+    """Advertise the model alias and the thinking variants in /v1/models.
 
     Some harnesses validate their configured model against this list before
-    using it, so the virtual name has to appear here or selecting it fails.
+    using it, so the virtual names have to appear here or selecting them fails.
     """
-    if not THINK_SUFFIX:
+    if not THINK_SUFFIX and not MODEL_ALIAS:
         return raw
     try:
         doc = json.loads(raw)
         data = doc.get("data")
         if not isinstance(data, list):
             return raw
-        extra = []
-        for m in data:
-            mid = m.get("id") if isinstance(m, dict) else None
-            if isinstance(mid, str) and not mid.endswith(THINK_SUFFIX):
-                variant = dict(m)
-                variant["id"] = mid + THINK_SUFFIX
-                extra.append(variant)
+        models = [m for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)]
+        if MODEL_ALIAS and models and not any(m["id"] == MODEL_ALIAS for m in models):
+            alias = dict(models[0])
+            alias["id"] = MODEL_ALIAS
+            models.append(alias)
+        extra = [m for m in models if m not in data]
+        if THINK_SUFFIX:
+            for m in models:
+                if not m["id"].endswith(THINK_SUFFIX):
+                    variant = dict(m)
+                    variant["id"] = m["id"] + THINK_SUFFIX
+                    extra.append(variant)
         if not extra:
             return raw
         doc["data"] = data + extra
@@ -663,6 +687,32 @@ def busy_response(path, reason):
     return web.json_response(payload, status=429, headers={"Retry-After": "30"})
 
 
+async def refresh_served_model():
+    """Learn the served model from vLLM; keep the last value on failure."""
+    global _served_model
+    try:
+        async with _session.get(
+                f"{UPSTREAM}/v1/models",
+                headers={"Authorization": f"Bearer {UPSTREAM_KEY}"},
+                timeout=ClientTimeout(total=5)) as r:
+            if r.status != 200:
+                return
+            data = (await r.json(content_type=None)).get("data") or []
+        ids = [m.get("id") for m in data if isinstance(m, dict)]
+        ids = [i for i in ids if isinstance(i, str) and i]
+        if ids and ids[0] != _served_model:
+            log(f"model alias {MODEL_ALIAS!r} -> {ids[0]!r}")
+            _served_model = ids[0]
+    except Exception:
+        pass
+
+
+async def served_model_watcher():
+    while True:
+        await refresh_served_model()
+        await asyncio.sleep(SERVED_MODEL_REFRESH)
+
+
 async def user_limit_logger():
     while True:
         await asyncio.sleep(USER_LIMIT_LOG_EVERY)
@@ -698,6 +748,7 @@ async def handle(request: web.Request):
 
 
 async def proxy(request: web.Request):
+    global _served_model
     path = request.rel_url.path
     url = f"{UPSTREAM}{request.rel_url}"
     netid, agent = parse_identity(request.headers)
@@ -714,6 +765,8 @@ async def proxy(request: web.Request):
     accountable = request.method == "POST" and path.startswith("/v1/")
     if accountable:
         body = await request.read()
+        if MODEL_ALIAS and _served_model is None:
+            await refresh_served_model()
         body, model = rewrite_request(path, body)
     elif request.method not in ("GET", "HEAD", "OPTIONS"):
         body = await request.read()
@@ -727,6 +780,9 @@ async def proxy(request: web.Request):
         )
     except Exception as exc:
         log(f"upstream error for {request.method} {path}: {exc!r}")
+        # vLLM is down, perhaps restarting with a different model: re-learn
+        # the alias target once it is back rather than wait for the watcher.
+        _served_model = None
         return web.json_response(
             {"error": {"message": "upstream unavailable", "type": "proxy_error"}},
             status=502,
@@ -740,7 +796,7 @@ async def proxy(request: web.Request):
             raw = await upstream.read()
         finally:
             upstream.release()
-        return web.Response(status=200, body=add_think_variants(raw),
+        return web.Response(status=200, body=add_virtual_models(raw),
                             content_type="application/json")
 
     resp_hdrs = {k: v for k, v in upstream.headers.items()
@@ -807,6 +863,8 @@ async def on_startup(app):
     if UNATTRIBUTED_LOG:
         app["unattributed_flusher"] = asyncio.create_task(unattributed_flusher())
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
+    if MODEL_ALIAS:
+        app["served_model_watcher"] = asyncio.create_task(served_model_watcher())
     if USER_MAX_INFLIGHT > 0:
         app["user_limit_logger"] = asyncio.create_task(user_limit_logger())
         share = (f"budget {ENGINE_BUDGET} shared by active users, at least "
