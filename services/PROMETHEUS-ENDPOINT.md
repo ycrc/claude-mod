@@ -1,7 +1,8 @@
 # Coding-agents usage endpoint — Prometheus scrape target
 
-Per-netid usage accounting for the `local-coding-agents` module (Qwen3.8-27B
-served by vLLM on Bouchet).
+Per-netid usage accounting for the `local-coding-agents` module (the
+YCRC-hosted model served by vLLM on Bouchet: Qwen3.8-27B until 2026-10-12,
+Qwen3.8-Flash-Next since).
 
 ## Scrape target
 
@@ -66,7 +67,14 @@ add that if you want the target to follow the job automatically.
 | `coding_agents_ttft_seconds` | histogram | `cluster`, `netid`, `agent` | Time to first byte, per netid |
 | `coding_agents_request_duration_seconds` | histogram | `cluster`, `netid`, `agent` | Full request duration, per netid |
 
-`agent` is one of `claude`, `codex`, `copilot`, `pi` (the module harnesses) or `claude-mod` (the module that drives this model from commercial Claude); `unknown` when the credential carries a netid but no recognised agent.
+`agent` is one of `claude`, `codex`, `copilot`, `pi` (the module harnesses), `claude-mod` (the module that drives this model from commercial Claude) or `openwebui` (the Open OnDemand Open WebUI app); `unknown` when the credential carries a netid but no recognised agent.
+
+`model` is always the real served model name, with a `-think` suffix for the
+extended-reasoning variant, even though clients request the `ycrc-local`
+alias; the gateway resolves the alias before accounting. A model change
+therefore starts new series (e.g. `Qwen3.8-27B` series stop and
+`Qwen3.8-Flash-Next` series begin at the 2026-10-12 cutover); aggregate over
+`model` for continuity.
 
 ### Cardinality
 
@@ -140,7 +148,9 @@ an agent session exits. The netid comes from the account database (`id -un`),
 not from the environment.
 
 **Recorded:** netid, uid, harness, cluster, model, Slurm job ID, node,
-start/end time, duration, exit status.
+start/end time, duration, exit status. From module 1.1 the session `model` is
+the alias the harness requested (`ycrc-local` or `ycrc-local-think`), not the
+served model; token metrics carry the served model.
 
 **Not recorded:** prompts, completions, file paths, command arguments, working
 directory. Nothing about what the user was doing — only that they used it.

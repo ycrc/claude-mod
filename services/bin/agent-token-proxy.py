@@ -156,8 +156,10 @@ NETID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 # The four module harnesses, plus claude-mod: the module whose in-house mode
 # drives this local model from Claude Code. It sends "<netid>.<label>"; with
 # label "claude-mod" its usage gets its own series instead of sharing
-# "claude" with the coding-agents launcher.
-VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod"))
+# "claude" with the coding-agents launcher. "openwebui" is the Open OnDemand
+# Open WebUI app, which runs in the user's own job and sends
+# "<netid>.openwebui".
+VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "openwebui"))
 
 # Token fields across all three wire formats. Matching the individual fields
 # rather than the enclosing object keeps this robust when a usage block is
