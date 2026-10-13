@@ -54,6 +54,30 @@ from aiohttp import ClientSession, ClientTimeout, web
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+# Settings come from the environment, which the supervising loop in the
+# serving job's webui.sh sets. That loop runs from Slurm's stored copy of the
+# script, so changing a setting there means resubmitting the whole serving job
+# (and reloading the model). PROXY_SETTINGS_FILE lets an administrator change
+# PROXY_* settings with only a gateway restart instead: KEY=VALUE lines,
+# '#' comments; only PROXY_* keys are read, and they override the environment.
+def _load_settings_file(path):
+    try:
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if key.startswith("PROXY_"):
+                    os.environ[key] = value.strip().strip("'\"")
+    except FileNotFoundError:
+        pass
+
+
+_load_settings_file(os.environ.get("PROXY_SETTINGS_FILE",
+                                   "/apps/services/coding-agents/gateway.env"))
+
 LISTEN_HOST = os.environ.get("PROXY_LISTEN_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("PROXY_LISTEN_PORT", "8008"))
 UPSTREAM = os.environ.get("PROXY_UPSTREAM", "http://127.0.0.1:8010").rstrip("/")
