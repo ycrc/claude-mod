@@ -182,9 +182,9 @@ IDENTITY_EXEMPT_ADDRS = frozenset(
     a.strip() for a in os.environ.get("PROXY_IDENTITY_EXEMPT_ADDRS", "127.0.0.1,::1").split(",")
     if a.strip())
 IDENTITY_MESSAGE = os.environ.get("PROXY_IDENTITY_MESSAGE") or (
-    "Direct access to the YCRC-hosted model isn't supported. Run "
-    "`module load local-coding-agents` to use the local model (claude, codex, "
-    "copilot, pi), or `module load claude` to use Anthropic's Claude. "
+    "Direct access to the YCRC-hosted model isn't supported. Use module load "
+    "local-coding-agents for access to local only instances (claude, codex, "
+    "copilot, pi) or for Claude Enterprise, use module load claude. "
     "Questions: research.computing@yale.edu")
 NETID_CACHE_TTL = 3600   # seconds to remember whether a netid exists
 
