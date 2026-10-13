@@ -43,6 +43,7 @@ import asyncio
 import collections
 import json
 import os
+import pwd
 import re
 import sys
 import time
@@ -140,6 +141,28 @@ USER_QUEUE_TIMEOUT = float(os.environ.get("PROXY_USER_QUEUE_TIMEOUT", "300"))
 USER_LIMIT_EXEMPT = frozenset(
     x.strip() for x in os.environ.get("PROXY_USER_LIMIT_EXEMPT", "").split(",") if x.strip())
 USER_LIMIT_LOG_EVERY = 60   # seconds between throttling summaries in the log
+
+# Identity enforcement. When on, inference endpoints (/v1/...) refuse any
+# request that does not carry "<netid>.<agent>" with a recognised agent and a
+# netid that exists on this cluster -- i.e. the shared key, no key, a bare or
+# malformed key -- with HTTP 403 and a message telling the user how to get
+# access. This is what keeps personal installs pointed at the published
+# endpoint from using the model anonymously. It is not authentication (the
+# credential is not a secret), but it ends anonymous use and makes every
+# request accountable to a netid. Requests from IDENTITY_EXEMPT_ADDRS (the
+# serving node itself) are always served, for administrators' checks; users
+# cannot reach loopback. Refusals are still summarised in the unattributed
+# log, with credential kind "<kind>-refused". Off unless set to 1.
+REQUIRE_IDENTITY = os.environ.get("PROXY_REQUIRE_IDENTITY", "0") == "1"
+IDENTITY_EXEMPT_ADDRS = frozenset(
+    a.strip() for a in os.environ.get("PROXY_IDENTITY_EXEMPT_ADDRS", "127.0.0.1,::1").split(",")
+    if a.strip())
+IDENTITY_MESSAGE = os.environ.get("PROXY_IDENTITY_MESSAGE") or (
+    "Direct access to the YCRC-hosted model isn't supported. Load the "
+    "local-coding-agents module (claude, codex, copilot, pi) or use the Open "
+    "WebUI app in Open OnDemand; for Claude Enterprise, use the claude-mod "
+    "module. Questions: research.computing@yale.edu")
+NETID_CACHE_TTL = 3600   # seconds to remember whether a netid exists
 
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
@@ -740,7 +763,71 @@ async def user_limit_logger():
             log(f"user limit logger error: {exc!r}")
 
 
+_netid_cache = {}   # netid -> (exists, monotonic expiry)
+
+
+def _netid_exists_sync(netid):
+    try:
+        pwd.getpwnam(netid)
+        return True
+    except KeyError:
+        return False
+
+
+async def netid_exists(netid):
+    """Whether netid is an account on this cluster. Cached; a lookup that
+    fails (rather than answering "no such user") counts as existing, so a
+    directory-service hiccup can never lock users out."""
+    now = time.monotonic()
+    hit = _netid_cache.get(netid)
+    if hit and hit[1] > now:
+        return hit[0]
+    try:
+        ok = await asyncio.get_running_loop().run_in_executor(
+            None, _netid_exists_sync, netid)
+    except Exception:
+        return True
+    if len(_netid_cache) > 20000:
+        _netid_cache.clear()
+    _netid_cache[netid] = (ok, now + NETID_CACHE_TTL)
+    return ok
+
+
+async def identity_refusal(request):
+    """Reason to refuse this request under REQUIRE_IDENTITY, or None."""
+    if not REQUIRE_IDENTITY or not request.rel_url.path.startswith("/v1/"):
+        return None
+    if request.remote in IDENTITY_EXEMPT_ADDRS:
+        return None
+    netid, agent = parse_identity(request.headers)
+    if netid == "unattributed":
+        return credential_kind(request.headers)
+    if agent not in VALID_AGENTS:
+        return "unknown-agent"
+    if not await netid_exists(netid):
+        return "unknown-netid"
+    return None
+
+
+def identity_response(path):
+    if path.startswith("/v1/messages"):
+        payload = {"type": "error",
+                   "error": {"type": "permission_error", "message": IDENTITY_MESSAGE}}
+    else:
+        payload = {"error": {"message": IDENTITY_MESSAGE, "type": "permission_error",
+                             "code": "identity_required"}}
+    return web.json_response(payload, status=403)
+
+
 async def handle(request: web.Request):
+    try:
+        reason = await identity_refusal(request)
+    except Exception:
+        reason = None      # enforcement must never break legitimate traffic
+    if reason:
+        note_unattributed(request.remote, request.headers.get("User-Agent"),
+                          request.rel_url.path, None, f"{reason}-refused", 0, 0)
+        return identity_response(request.rel_url.path)
     key = None
     if request.method == "POST" and request.rel_url.path.startswith("/v1/"):
         try:
@@ -876,6 +963,8 @@ async def on_startup(app):
     if UNATTRIBUTED_LOG:
         app["unattributed_flusher"] = asyncio.create_task(unattributed_flusher())
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
+    log(f"identity enforcement: {'ON' if REQUIRE_IDENTITY else 'off'}"
+        + (f", exempt {sorted(IDENTITY_EXEMPT_ADDRS)}" if REQUIRE_IDENTITY else ""))
     if MODEL_ALIAS:
         app["served_model_watcher"] = asyncio.create_task(served_model_watcher())
     if USER_MAX_INFLIGHT > 0:
