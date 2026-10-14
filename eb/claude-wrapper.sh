@@ -61,15 +61,16 @@ in_house_config="${launcher_dir}/claude-in-house.conf"
 # Take the module's own options out of the arguments; everything else is meant
 # for Claude. Scanning stops at "--", which is passed on with everything after
 # it. --bind values are only syntax-checked here; their paths are checked under
-# "User binds". --model, --fallback-model and --settings stay in Claude's
-# arguments but are noted, because in-house mode restricts them; they are
-# checked once the in-house conf is loaded.
+# "User binds". --model, --effort, --fallback-model and --settings stay in
+# Claude's arguments but are noted, because in-house mode restricts them; they
+# are checked once the in-house conf is loaded.
 # Sets: show_help, launch_mode, user_bind_specs, requested_models,
-# fallback_model_given, settings_given, claude_args.
+# requested_efforts, fallback_model_given, settings_given, claude_args.
 show_help=false
 launch_mode=default
 user_bind_specs=()
 requested_models=()
+requested_efforts=()
 fallback_model_given=false
 settings_given=false
 claude_args=()
@@ -89,7 +90,7 @@ while (( $# > 0 )); do
             # Reserved for choosing among several in-house models later.
             die "--in-house-model takes no value."
             ;;
-        --model|--model=*|--fallback-model|--fallback-model=*|--settings|--settings=*)
+        --model|--model=*|--effort|--effort=*|--fallback-model|--fallback-model=*|--settings|--settings=*)
             option_name="${1%%=*}"
             option_value=""
             if [[ "$1" == *=* ]]; then
@@ -107,6 +108,11 @@ while (( $# > 0 )); do
                 --model)
                     if [[ -n "$option_value" ]]; then
                         requested_models+=("$option_value")
+                    fi
+                    ;;
+                --effort)
+                    if [[ -n "$option_value" ]]; then
+                        requested_efforts+=("$option_value")
                     fi
                     ;;
                 --fallback-model) fallback_model_given=true ;;
@@ -199,8 +205,7 @@ done < <(compgen -e)
 # the --model / --fallback-model / --settings rules, the cluster and curl. Then
 # inherited provider settings (ANTHROPIC_*, CLAUDE_CODE_USE_*, ...) are removed
 # so nothing can redirect the session, and the user-scoped credential
-# "<netid>.<label>" (label from claude-in-house.conf, "claude-mod") is exported
-# for Apptainer to pass on; it identifies the user
+# "<netid>.claude-mod" is exported for Apptainer to pass on; it identifies the user
 # to the service for accounting and is not a password. Claude state is shared
 # with the default mode, so nothing else changes until "In-house session" below.
 # Reads: claude-in-house.conf. Sets: in_house_*, ANTHROPIC_AUTH_TOKEN.
@@ -381,7 +386,7 @@ if [[ "$launch_mode" == in-house ]]; then
         502) die "the in-house model service is up, but its model server isn't responding." "$service_help" ;;
         *) die "the in-house model service returned HTTP ${service_status}." "$service_help" ;;
     esac
-    # The quotes keep "Qwen3.8-27B" from matching only "Qwen3.8-27B-think".
+    # The quotes keep "ycrc-local" from matching only "ycrc-local-think".
     if [[ "${service_reply%$'\n'*}" != *"\"${in_house_model}\""* ]]; then
         die "the in-house model service doesn't offer ${in_house_model}." \
             "The module's claude-in-house.conf may be out of date. $service_help"

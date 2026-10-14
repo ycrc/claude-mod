@@ -447,7 +447,9 @@ Each directory is checked in this order; the first matching outcome applies.
 ## In-house mode
 
 `claude --in-house-model` runs Claude Code against YCRC's in-house model
-instead of Anthropic's. The model (currently `Qwen3.8-27B`) is served by vLLM
+instead of Anthropic's. The model is requested by a stable alias, `ycrc-local`, which the
+service maps to whatever it currently serves (`Qwen3.8-Flash-Next` as of
+October 2026), so a model swap needs no module rebuild. It is served by vLLM
 on a Bouchet GPU node, behind a gateway that speaks Anthropic's Messages API.
 The session's prompts, code and tool results go only to that service, not to
 Anthropic.
@@ -475,11 +477,10 @@ the default mode. It contains no secrets.
 ```bash
 in_house_clusters=(bouchet)
 in_house_base_url='http://a1127u31n01.mghpcc.ycrc.yale.edu:8008'
-in_house_model='Qwen3.8-27B'
-in_house_agent_label='claude-mod'   # credential is "<netid>.<label>"; the gateway knows claude, codex, copilot, pi, claude-mod
+in_house_model='ycrc-local'         # stable alias; the service maps it to whichever model it serves
+in_house_agent_label='claude-mod'   # credential is "<netid>.<label>"; the gateway knows claude-mod, claude, codex, copilot, pi
 in_house_max_context='262000'
 in_house_max_output='16384'
-in_house_effort='medium'            # xhigh, medium or low; this vLLM rejects high and max
 ```
 
 Every listed variable is unset before the file is sourced, so an inherited
@@ -492,9 +493,7 @@ a gap in the file. Each must then be set and non-empty, and:
 - `in_house_model` may contain only letters, digits and `._:/@-`, and
   `in_house_agent_label` only letters, digits, `_` and `-`. Labels the gateway
   doesn't know are accounted as `unknown`;
-- `in_house_max_context` and `in_house_max_output` must be positive integers;
-- `in_house_effort` must be `xhigh`, `medium` or `low`, the only levels this
-  vLLM accepts. Claude Code's default, `high`, gets HTTP 400 from it.
+- `in_house_max_context` and `in_house_max_output` must be positive integers.
 
 ### Preflight
 
@@ -506,15 +505,17 @@ other work. In order, it:
    - `--model` (either form) may name only the in-house model or `default`.
      Anything else, including Claude aliases such as `opus`, stops the launch
      with a message suggesting `claude` without `--in-house-model`;
+   - `--effort` (either form) may be only `low`, `medium` or `xhigh`;
    - `--fallback-model` is refused, since there is only one model;
    - a user `--settings` is refused, because in-house mode passes its own
      `--settings` (see "In-house session") and Claude accepts only one. User
      settings belong in `~/.claude/settings.json`;
 3. requires `CLUSTER` to be in `in_house_clusters` and `curl` to be available;
-4. unsets every exported `ANTHROPIC_*`, `CLAUDE_CODE_USE_*` and
-   `CLAUDE_CODE_EXTRA_BODY`, and the same names with an `APPTAINERENV_` or
-   `SINGULARITYENV_` prefix, printing one warning per name. These could send the
-   session to another server or switch reasoning back on. The default mode
+4. unsets every exported `ANTHROPIC_*`, `CLAUDE_CODE_USE_*`,
+   `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL`, and the same names
+   with an `APPTAINERENV_` or `SINGULARITYENV_` prefix, printing one warning per
+   name. These could send the session to another server, add fields to its
+   requests, or pin an effort level the service lacks. The default mode
    keeps them; setting them there is the user's own choice;
 5. exports `ANTHROPIC_AUTH_TOKEN="<netid>.<label>"`, with the netid from
    `id -un` (not `USER`, which the user can change). Apptainer passes it on from
@@ -536,7 +537,7 @@ curl -sS --connect-timeout 3 -m 5 -w '\n%{http_code}' \
 
 It shows that the gateway answers, that vLLM behind it is up, and that the
 configured model is offered (`"<model>"` must appear, with the quotes, so
-`Qwen3.8-27B` does not match only `Qwen3.8-27B-think`). `GET` requests are not
+`ycrc-local` does not match only `ycrc-local-think`). `GET` requests are not
 counted as usage, and the check normally takes about 0.1 s. Each failure stops
 the launch with its own message, followed by "Try again later, or contact
 research.computing@yale.edu if it persists.":
@@ -560,9 +561,7 @@ own `settings.json` can redirect an in-house session or change these values.
 | `ANTHROPIC_DEFAULT_OPUS_MODEL`, `..._NAME` | the model; "<model> (YCRC in-house)" | "Default" in `/model` resolves to the Opus tier. The other tiers are left unmapped, so they are refused (see "Choosing a model"). |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | the model | Default model for subagents (`_FORCE` is never set). |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | Otherwise "Default" picks a 1M-context variant. |
-| `CLAUDE_CODE_EXTRA_BODY` | `{"chat_template_kwargs":{"enable_thinking":false}}` | Any effort level switches the model's reasoning on; this turns it off for the session. |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | from the conf | Claude Code doesn't know the model's limits; without the output limit it asks for 32000 tokens. |
-| `CLAUDE_CODE_EFFORT_LEVEL` | `in_house_effort` | Required: the default `high` is rejected. `/effort` cannot change it during the session. |
 | `CLAUDE_CODE_AUTO_MODE_SERVER` | `0` | vLLM has no server-side auto-mode classifier (see "Auto mode in in-house mode"). |
 | `CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY` | `0` | No other provider. |
 | `DISABLE_BUG_COMMAND` | `1` | `/bug` can upload the session to Anthropic. |
@@ -573,7 +572,7 @@ inherited `CLAUDE_CONFIG_DIR` applies in both modes.
 **Claude options**, placed before `--add-dir` and the user's arguments:
 
 - `--settings` with the `env` block above, plus
-  `availableModels: ["<model>"]`, a `modelPicker` with the in-house model as its
+  `maxEffortLevel: "xhigh"` (see "Effort"), `availableModels: ["<model>"]`, a `modelPicker` with the in-house model as its
   only row (`replaceBuiltInOptions: true`), and `permissions.deny:
   ["WebSearch"]`, since web search is a server-side tool the service lacks;
 - `--append-system-prompt`, telling the model that the session runs on YCRC's
@@ -583,7 +582,7 @@ inherited `CLAUDE_CONFIG_DIR` applies in both modes.
 **Banner** on stderr:
 
 ```text
-In-house mode: Qwen3.8-27B hosted by YCRC. This session's prompts and code are not sent to Anthropic.
+In-house mode: ycrc-local hosted by YCRC. This session's prompts and code are not sent to Anthropic.
 Sessions, settings and memory are shared with your normal Claude; continuing this session
 without --in-house-model sends it to Anthropic. See claude --ycrc-help.
 ```
@@ -591,12 +590,12 @@ without --in-house-model sends it to Anthropic. See claude --ycrc-help.
 ### Choosing a model
 
 The in-house model is the only choice. Asking for a Claude model gives a
-clear refusal rather than silently running Qwen:
+clear refusal rather than silently running the in-house model:
 
 | The user does | Result |
 | --- | --- |
 | `/model` (picker) | Rows: Default and the in-house model, both naming it |
-| `/model default` or `/model opus` | "Set model to `Qwen3.8-27B (YCRC in-house)` for this session only" |
+| `/model default` or `/model opus` | "Set model to `ycrc-local (YCRC in-house)` for this session only" |
 | `/model sonnet`, `haiku`, `fable`, `opusplan`, or a Claude model ID | "Model '…' is not available. Your organization restricts model selection." The session stays on the in-house model. |
 | `--model` with a Claude model at launch | Stopped by the wrapper (see "Preflight") |
 | An agent, skill or teammate that names a Claude model | Claude Code warns and uses the session's model |
@@ -613,10 +612,13 @@ Both modes use the same Claude state, bound by the same configuration:
 memory, prompt history), `~/.claude.json` and `~/.local/share/claude`. In
 practice:
 
-- the launch environment wins over a saved `model` or `effortLevel`, so a
-  commercial-mode setting cannot break an in-house launch;
-- an in-house session writes only its transcript (and any memory the model
-  saves); settings are unchanged;
+- the launch environment and `--settings` win over a saved `model`, so a
+  commercial-mode setting cannot break an in-house launch. Claude Code saves
+  effort per model, so a level saved for Opus never reaches the in-house model;
+- an in-house session writes its transcript (and any memory the model saves).
+  `/effort` saves its level under `modelSettings.ycrc-local` in
+  `~/.claude/settings.json`, and later in-house sessions start at it. Other
+  settings are unchanged;
 - sessions move between modes in both directions with `--resume` or
   `--continue`: a commercial session continues on the in-house model, and an
   in-house session continues on Claude;
@@ -661,15 +663,38 @@ start with `--permission-mode default` or switch modes with Shift+Tab. Each
 classified call sends a prompt of about 35k tokens to the shared server (mostly
 served from its prefix cache), so auto mode adds load.
 
+### Effort
+
+The service has three reasoning levels, `low`, `medium` and `xhigh`, and the
+model reasons at every level. Claude Code has five (`low`, `medium`, `high`,
+`xhigh`, `max`) and sends one with every request. claude-mod lines them up as far as
+Claude Code allows:
+
+- The wrapper doesn't set a level. A session starts at the level the user saved
+  for this model with `/effort` ("saved as your default for new sessions"), or
+  else at Claude Code's default, `high`, which the service runs as `medium`.
+- `maxEffortLevel: "xhigh"` takes `max` out of `/effort`. Asking for it gives
+  "Effort 'max' exceeds the cap for ycrc-local …; set to 'xhigh' instead".
+- `--effort high` and `--effort max` at launch are refused, as is an inherited
+  `CLAUDE_CODE_EFFORT_LEVEL`.
+- **`/effort high` can't be refused.** Claude Code has no setting that removes a
+  single level, and hooks don't run for `/effort`. The service treats `high` as
+  `medium`.
+- The auto-mode classifier sends no effort level, so it reasons at the
+  service's default, `low`, whatever the session's level is.
+
 ### Limits
 
 - **Best effort.** Anthropic does not support non-Claude models in Claude Code.
   Web search is unavailable, and other features may behave differently. Claude
   Code prints `[claude-code:unrecognized_model]` for the model ID; it is
   harmless.
-- **Effort is fixed** at `in_house_effort` for the session.
-- **Reasoning is off.** Responses are faster and lighter on the shared server,
-  but the model does not think step by step.
+- **Effort** starts at the level saved with `/effort`, or at `high` (run as
+  `medium`). `/effort low`, `/effort medium` and `/effort xhigh` change it.
+  `/effort max` is capped to `xhigh`, with a message (see "Effort").
+- **The model reasons on every turn**, at the effort level. This adds output
+  tokens and latency. Claude Code shows no thinking-token count, because the
+  service doesn't report one.
 - **Ignore the dollar cost** Claude Code shows for the in-house model; it is an
   estimate with no price behind it.
 - **Usage is recorded per netid.** The gateway records token counts per netid
@@ -692,11 +717,12 @@ wrapper must follow:
 
 - the Anthropic Messages API at `<base_url>/v1/messages`, and `GET /v1/models`
   listing the served models;
-- credentials of the form `<netid>.<label>`, with `claude` among the known
+- credentials of the form `<netid>.<label>`, with `claude-mod` among the known
   labels;
-- `chat_template_kwargs.enable_thinking: false` taking precedence over the
-  effort level, and the gateway passing a caller's explicit setting through;
-- the effort levels vLLM accepts (`xhigh`, `medium`, `low`);
+- the `ycrc-local` alias listed by `GET /v1/models` and mapped to the served
+  model;
+- the effort levels `low`, `medium` and `xhigh`, and requests with no effort
+  (the auto-mode classifier's) being accepted;
 - HTTP 502 from the gateway when vLLM is down.
 
 ## Bind ordering

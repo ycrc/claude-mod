@@ -404,18 +404,18 @@ add_user_binds() {
 # --- In-house mode ------------------------------------------------------------
 
 # prepare_in_house_mode: load and check claude-in-house.conf, apply the
-# in-house rules for --model, --fallback-model and --settings, require a
-# supported cluster and curl, remove inherited provider settings, and export
-# the user-scoped credential.
-# Reads: in_house_config, cluster_name, requested_models, fallback_model_given,
-# settings_given. Sets: in_house_* (from the conf), ANTHROPIC_AUTH_TOKEN.
+# in-house rules for --model, --effort, --fallback-model and --settings,
+# require a supported cluster and curl, remove inherited provider settings, and
+# export the user-scoped credential.
+# Reads: in_house_config, cluster_name, requested_models, requested_efforts,
+# fallback_model_given, settings_given. Sets: in_house_* (from the conf), ANTHROPIC_AUTH_TOKEN.
 prepare_in_house_mode() {
     local url_pattern='^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?$'
     local model_pattern='^[A-Za-z0-9._:/@-]+$' label_pattern='^[A-Za-z0-9_-]+$'
     local name base value cluster cluster_allowed=false account
 
     load_config_vars "$in_house_config" "in-house" in_house_clusters in_house_base_url \
-        in_house_model in_house_agent_label in_house_max_context in_house_max_output in_house_effort
+        in_house_model in_house_agent_label in_house_max_context in_house_max_output
     if [[ "$(declare -p in_house_clusters)" != "declare -a "* ]]; then
         die "$in_house_config: in_house_clusters must be an array, e.g. in_house_clusters=(bouchet)."
     fi
@@ -434,10 +434,6 @@ prepare_in_house_mode() {
             die "$in_house_config: $name must be a positive integer: ${!name}"
         fi
     done
-    case "$in_house_effort" in
-        xhigh|medium|low) ;;
-        *) die "$in_house_config: in_house_effort must be xhigh, medium or low; the in-house server rejects other levels: $in_house_effort" ;;
-    esac
 
     # One model is served, so Claude's model choices and fallbacks don't apply,
     # and the wrapper's own --settings must not be replaced.
@@ -446,6 +442,14 @@ prepare_in_house_mode() {
             die "--model $value is not available in in-house mode, which offers only $in_house_model." \
                 "To use a Claude model, start claude without --in-house-model."
         fi
+    done
+    # The service has three reasoning levels; Claude's high and max would be
+    # mapped to others without saying so.
+    for value in "${requested_efforts[@]}"; do
+        case "$value" in
+            low|medium|xhigh) ;;
+            *) die "--effort $value is not available in in-house mode; use low, medium or xhigh." ;;
+        esac
     done
     if [[ "$fallback_model_given" == true ]]; then
         die "--fallback-model cannot be used with --in-house-model: there is only one in-house model."
@@ -464,12 +468,13 @@ prepare_in_house_mode() {
         die "in-house mode needs curl to check the in-house model service, but curl was not found."
     fi
 
-    # Inherited provider settings could send in-house prompts elsewhere.
+    # Inherited provider settings could send in-house prompts elsewhere, and an
+    # inherited effort level would pin the session to it.
     while IFS= read -r name; do
         base="${name#APPTAINERENV_}"
         base="${base#SINGULARITYENV_}"
         case "$base" in
-            ANTHROPIC_*|CLAUDE_CODE_USE_*|CLAUDE_CODE_EXTRA_BODY)
+            ANTHROPIC_*|CLAUDE_CODE_USE_*|CLAUDE_CODE_EXTRA_BODY|CLAUDE_CODE_EFFORT_LEVEL)
                 unset "$name"
                 warn "in-house mode ignores $name from your environment."
                 ;;
@@ -494,16 +499,13 @@ add_in_house_claude_opts() {
         "ANTHROPIC_BASE_URL=${in_house_base_url}"
         "ANTHROPIC_MODEL=${in_house_model}"
         # "Default" in /model resolves to the Opus tier. The other tiers stay
-        # unmapped, so availableModels refuses them instead of silently giving Qwen.
+        # unmapped, so availableModels refuses them instead of silently giving the in-house model.
         "ANTHROPIC_DEFAULT_OPUS_MODEL=${in_house_model}"
         "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME=${label}"
         "CLAUDE_CODE_SUBAGENT_MODEL=${in_house_model}"
         "CLAUDE_CODE_DISABLE_1M_CONTEXT=1"
-        # Any effort level switches the model's reasoning on; this turns it off.
-        'CLAUDE_CODE_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}'
         "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${in_house_max_context}"
         "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${in_house_max_output}"
-        "CLAUDE_CODE_EFFORT_LEVEL=${in_house_effort}"
         # The auto-mode classifier then runs in Claude Code, on the in-house model.
         "CLAUDE_CODE_AUTO_MODE_SERVER=0"
         "CLAUDE_CODE_USE_BEDROCK=0"
@@ -520,7 +522,11 @@ add_in_house_claude_opts() {
         value="${value//\"/\\\"}"
         env_json+="${env_json:+,}\"${entry%%=*}\":\"${value}\""
     done
-    printf -v settings '{"env":{%s},"availableModels":["%s"],"modelPicker":{"options":[{"model":"%s","label":"%s"}],"replaceBuiltInOptions":true},"permissions":{"deny":["WebSearch"]}}' \
+    # No effortLevel, so a level the user saved for this model with /effort
+    # applies; otherwise Claude's default, high, which the service runs as
+    # medium. maxEffortLevel takes max out of /effort: the service has nothing
+    # above xhigh.
+    printf -v settings '{"env":{%s},"maxEffortLevel":"xhigh","availableModels":["%s"],"modelPicker":{"options":[{"model":"%s","label":"%s"}],"replaceBuiltInOptions":true},"permissions":{"deny":["WebSearch"]}}' \
         "$env_json" "$in_house_model" "$in_house_model" "$label"
 
     mode_claude_opts=(

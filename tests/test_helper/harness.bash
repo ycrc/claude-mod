@@ -122,8 +122,8 @@ while (( $# > 0 )); do
     shift
 done
 case "${STUB_SERVICE:-ok}" in
-    ok) body='{"object":"list","data":[{"id":"Qwen3.8-27B"},{"id":"Qwen3.8-27B-think"}]}'; code=200 ;;
-    nomodel) body='{"object":"list","data":[{"id":"Qwen3.8-27B-think"}]}'; code=200 ;;
+    ok) body='{"object":"list","data":[{"id":"Qwen3.8-Flash-Next"},{"id":"ycrc-local"},{"id":"Qwen3.8-Flash-Next-think"},{"id":"ycrc-local-think"}]}'; code=200 ;;
+    nomodel) body='{"object":"list","data":[{"id":"ycrc-local-think"}]}'; code=200 ;;
     down) echo "curl: (7) Failed to connect" >&2; exit 7 ;;
     *) body='{"error":"stub"}'; code="$STUB_SERVICE" ;;
 esac

@@ -8,9 +8,8 @@
 
 load 'test_helper/harness'
 
-MODEL=Qwen3.8-27B
+MODEL=ycrc-local
 GATEWAY=http://a1127u31n01.mghpcc.ycrc.yale.edu:8008
-EXTRA_BODY='{"chat_template_kwargs":{"enable_thinking":false}}'
 
 setup() {
     harness_setup
@@ -130,26 +129,26 @@ curl_argv_contains() {
     assert_env ANTHROPIC_DEFAULT_OPUS_MODEL_NAME "$MODEL (YCRC in-house)"
     assert_env CLAUDE_CODE_SUBAGENT_MODEL "$MODEL"
     assert_env CLAUDE_CODE_DISABLE_1M_CONTEXT 1
-    assert_env CLAUDE_CODE_EXTRA_BODY "$EXTRA_BODY"
     assert_env CLAUDE_CODE_MAX_CONTEXT_TOKENS 262000
     assert_env CLAUDE_CODE_MAX_OUTPUT_TOKENS 16384
-    assert_env CLAUDE_CODE_EFFORT_LEVEL medium
     assert_env CLAUDE_CODE_AUTO_MODE_SERVER 0
     assert_env DISABLE_BUG_COMMAND 1
     local name
     for name in ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
-                ANTHROPIC_DEFAULT_FABLE_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CONFIG_DIR; do
+                ANTHROPIC_DEFAULT_FABLE_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CONFIG_DIR \
+                CLAUDE_CODE_EFFORT_LEVEL; do
         refute_env "$name"
         stub_environment "$name" >/dev/null && fail "$name is set in the environment"
     done
     true
 }
 
-@test "in-house: reasoning is switched off in --env and in --settings" {
+@test "in-house: reasoning is left to the effort level, with no extra body" {
     run_wrapper --in-house-model
     assert_success
-    assert_env CLAUDE_CODE_EXTRA_BODY "$EXTRA_BODY"
-    settings_jq --arg b "$EXTRA_BODY" '.env.CLAUDE_CODE_EXTRA_BODY == $b' >/dev/null ||
+    refute_env CLAUDE_CODE_EXTRA_BODY
+    stub_environment CLAUDE_CODE_EXTRA_BODY >/dev/null && fail "CLAUDE_CODE_EXTRA_BODY is set in the environment"
+    settings_jq '.env | has("CLAUDE_CODE_EXTRA_BODY") | not' >/dev/null ||
         fail "settings: $(claude_option --settings)"
 }
 
@@ -170,12 +169,13 @@ curl_argv_contains() {
         ANTHROPIC_MODEL=claude-elsewhere
         CLAUDE_CODE_USE_BEDROCK=1
         'CLAUDE_CODE_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":true}}'
+        CLAUDE_CODE_EFFORT_LEVEL=high
         APPTAINERENV_ANTHROPIC_BASE_URL=http://elsewhere.example:2
         SINGULARITYENV_CLAUDE_CODE_USE_VERTEX=1
     )
     local name
     local -a names=(ANTHROPIC_BASE_URL ANTHROPIC_MODEL CLAUDE_CODE_USE_BEDROCK
-                    CLAUDE_CODE_EXTRA_BODY APPTAINERENV_ANTHROPIC_BASE_URL
+                    CLAUDE_CODE_EXTRA_BODY CLAUDE_CODE_EFFORT_LEVEL APPTAINERENV_ANTHROPIC_BASE_URL
                     SINGULARITYENV_CLAUDE_CODE_USE_VERTEX)
 
     run_wrapper --in-house-model
@@ -225,7 +225,8 @@ curl_argv_contains() {
         ".env.ANTHROPIC_BASE_URL == \"$GATEWAY\"" \
         ".env.ANTHROPIC_MODEL == \"$MODEL\"" \
         ".env.ANTHROPIC_DEFAULT_OPUS_MODEL == \"$MODEL\"" \
-        ".env.CLAUDE_CODE_EFFORT_LEVEL == \"medium\"" \
+        '.maxEffortLevel == "xhigh" and (has("effortLevel") | not)' \
+        '.env | has("CLAUDE_CODE_EFFORT_LEVEL") | not' \
         '.env.CLAUDE_CODE_USE_BEDROCK == "0" and .env.CLAUDE_CODE_USE_VERTEX == "0" and .env.CLAUDE_CODE_USE_FOUNDRY == "0"' \
         ".availableModels == [\"$MODEL\"]" \
         ".modelPicker.options == [{\"model\": \"$MODEL\", \"label\": \"$MODEL (YCRC in-house)\"}]" \
@@ -368,21 +369,26 @@ curl_argv_contains() {
     assert_success
 }
 
-@test "in-house: effort levels the server rejects are refused" {
-    local effort
-    for effort in high max HIGH ''; do
-        setup_conf_with "in_house_effort='$effort'"
-        run_wrapper --in-house-model
+@test "in-house: --effort high and max are refused; low, medium and xhigh pass through" {
+    local -a case_args
+    local spec
+    for spec in "--effort high" "--effort=max" "--effort ultracode"; do
+        read -r -a case_args <<< "$spec"
+        run_wrapper --in-house-model "${case_args[@]}" -p hi
         assert_failure
-        assert_output --partial "in_house_effort"
+        assert_output --partial "use low, medium or xhigh"
         refute_apptainer_called
+        curl_was_called && fail "[$spec] the service was contacted"
     done
-    for effort in xhigh medium low; do
-        setup_conf_with "in_house_effort='$effort'"
-        run_wrapper --in-house-model
+    for spec in "--effort low" "--effort=medium" "--effort xhigh"; do
+        read -r -a case_args <<< "$spec"
+        run_wrapper --in-house-model "${case_args[@]}" -p hi
         assert_success
-        assert_env CLAUDE_CODE_EFFORT_LEVEL "$effort"
+        [[ "$(claude_args | tail -n $(( ${#case_args[@]} + 2 )) | paste -sd ' ')" == "$spec -p hi" ]] ||
+            fail "[$spec] claude args: $(claude_args)"
     done
+    run_wrapper --effort high -p hi
+    assert_success
 }
 
 
