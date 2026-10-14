@@ -5,7 +5,7 @@ without Apptainer or a cluster. Each test builds a sandbox with an EasyBuild-lik
 install directory, a fake home directory and stub `apptainer`, `hostname`,
 `groups` and `curl` commands, then checks the exit status, the messages and
 the exact arguments the wrapper would pass to Apptainer. The `curl` stub stands
-in for the in-house model service; `STUB_SERVICE` selects its answer (`ok`,
+in for the local model service; `STUB_SERVICE` selects its answer (`ok`,
 `down`, `nomodel`, or an HTTP status such as `502`).
 
 | File | Covers |
@@ -14,7 +14,7 @@ in for the in-house model service; `STUB_SERVICE` selects its answer (`ok`,
 | `functions.bats` | Unit tests for the functions file. |
 | `help.bats` | `claude --ycrc-help`. |
 | `user_binds.bats` | `claude --bind`. |
-| `in_house.bats` | `claude --in-house-model`, with the shipped `claude-in-house.conf`. |
+| `local_model.bats` | `claude --local-model`, with the shipped `claude-local-model.conf`. |
 | `test_helper/harness.bash` | Sandbox, stubs, `run_wrapper`, parsers and bind/argument checks. |
 
 ## Requirements

@@ -3,8 +3,9 @@
 #
 # Only helpers used in more than one place, and the longer steps that would
 # clutter the launch sequence (user binds, allowed roots, bind ordering, help
-# text, in-house mode), live here; everything else is inline in claude-wrapper.sh. Sourcing
-# this file defines functions and one constant, and has no other effect.
+# text, local mode), live here; everything else is inline in claude-wrapper.sh.
+# Sourcing this file defines functions and one constant, and has no other
+# effect.
 # Functions share state through the global variables named in their comments;
 # those that validate input stop the launch with die() on failure.
 #
@@ -297,14 +298,16 @@ Module options (all other options are passed to Claude; see claude --help):
                        Also -B DIR. Hidden, system, excluded and home
                        directories are refused.
                        Example: claude --bind=/path/to/lab/shared-data
-  --in-house-model     Use YCRC's in-house model, hosted at Yale, instead of
+  --local-model        Use the local model, hosted by YCRC at Yale, instead of
                        Anthropic's: this session's prompts and code are not
-                       sent to Anthropic. Bouchet only. Sessions, settings and
-                       memory are shared with normal Claude, so continuing an
-                       in-house session without this option sends it to
-                       Anthropic. Token counts (not prompts) are recorded per
-                       netid. Auto mode works; the in-house model judges which
-                       commands are safe. See "In-house mode" in the docs.
+                       sent to Anthropic. Bouchet only. Effort can be low,
+                       medium or xhigh (/effort); high, the default, runs as
+                       medium. Sessions, settings and memory are shared with
+                       normal Claude, so continuing a local session without
+                       this option sends it to Anthropic. Token counts (not
+                       prompts) are recorded per netid. Auto mode works; the
+                       local model judges which commands are safe. See
+                       "Local model mode" in the docs.
   --ycrc-help          Show this help.
 
 Documentation: https://docs.ycrc.yale.edu/ai/commercial-coding-agents/#using-the-claude-module
@@ -401,46 +404,47 @@ add_user_binds() {
     done
 }
 
-# --- In-house mode ------------------------------------------------------------
+# --- Local mode ---------------------------------------------------------------
 
-# prepare_in_house_mode: load and check claude-in-house.conf, apply the
-# in-house rules for --model, --effort, --fallback-model and --settings,
+# prepare_local_mode: load and check claude-local-model.conf, apply the
+# local-mode rules for --model, --effort, --fallback-model and --settings,
 # require a supported cluster and curl, remove inherited provider settings, and
 # export the user-scoped credential.
-# Reads: in_house_config, cluster_name, requested_models, requested_efforts,
-# fallback_model_given, settings_given. Sets: in_house_* (from the conf), ANTHROPIC_AUTH_TOKEN.
-prepare_in_house_mode() {
+# Reads: local_config, cluster_name, requested_models, requested_efforts,
+# fallback_model_given, settings_given.
+# Sets: local_* (from the conf), ANTHROPIC_AUTH_TOKEN.
+prepare_local_mode() {
     local url_pattern='^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?$'
     local model_pattern='^[A-Za-z0-9._:/@-]+$' label_pattern='^[A-Za-z0-9_-]+$'
     local name base value cluster cluster_allowed=false account
 
-    load_config_vars "$in_house_config" "in-house" in_house_clusters in_house_base_url \
-        in_house_model in_house_agent_label in_house_max_context in_house_max_output
-    if [[ "$(declare -p in_house_clusters)" != "declare -a "* ]]; then
-        die "$in_house_config: in_house_clusters must be an array, e.g. in_house_clusters=(bouchet)."
+    load_config_vars "$local_config" "local model" local_clusters local_base_url \
+        local_model local_agent_label local_max_context local_max_output
+    if [[ "$(declare -p local_clusters)" != "declare -a "* ]]; then
+        die "$local_config: local_clusters must be an array, e.g. local_clusters=(bouchet)."
     fi
-    in_house_base_url="${in_house_base_url%/}"
-    if [[ ! "$in_house_base_url" =~ $url_pattern ]]; then
-        die "$in_house_config: in_house_base_url must look like http(s)://host[:port][/path]: $in_house_base_url"
+    local_base_url="${local_base_url%/}"
+    if [[ ! "$local_base_url" =~ $url_pattern ]]; then
+        die "$local_config: local_base_url must look like http(s)://host[:port][/path]: $local_base_url"
     fi
-    if [[ ! "$in_house_model" =~ $model_pattern ]]; then
-        die "$in_house_config: in_house_model may only contain letters, digits and ._:/@-: $in_house_model"
+    if [[ ! "$local_model" =~ $model_pattern ]]; then
+        die "$local_config: local_model may only contain letters, digits and ._:/@-: $local_model"
     fi
-    if [[ ! "$in_house_agent_label" =~ $label_pattern ]]; then
-        die "$in_house_config: in_house_agent_label may only contain letters, digits, _ and -: $in_house_agent_label"
+    if [[ ! "$local_agent_label" =~ $label_pattern ]]; then
+        die "$local_config: local_agent_label may only contain letters, digits, _ and -: $local_agent_label"
     fi
-    for name in in_house_max_context in_house_max_output; do
+    for name in local_max_context local_max_output; do
         if [[ ! "${!name}" =~ ^[1-9][0-9]*$ ]]; then
-            die "$in_house_config: $name must be a positive integer: ${!name}"
+            die "$local_config: $name must be a positive integer: ${!name}"
         fi
     done
 
     # One model is served, so Claude's model choices and fallbacks don't apply,
     # and the wrapper's own --settings must not be replaced.
     for value in "${requested_models[@]}"; do
-        if [[ "$value" != "$in_house_model" && "$value" != default ]]; then
-            die "--model $value is not available in in-house mode, which offers only $in_house_model." \
-                "To use a Claude model, start claude without --in-house-model."
+        if [[ "$value" != "$local_model" && "$value" != default ]]; then
+            die "--model $value is not available in local mode, which offers only $local_model." \
+                "To use a Claude model, start claude without --local-model."
         fi
     done
     # The service has three reasoning levels; Claude's high and max would be
@@ -448,27 +452,27 @@ prepare_in_house_mode() {
     for value in "${requested_efforts[@]}"; do
         case "$value" in
             low|medium|xhigh) ;;
-            *) die "--effort $value is not available in in-house mode; use low, medium or xhigh." ;;
+            *) die "--effort $value is not available in local mode; use low, medium or xhigh." ;;
         esac
     done
     if [[ "$fallback_model_given" == true ]]; then
-        die "--fallback-model cannot be used with --in-house-model: there is only one in-house model."
+        die "--fallback-model cannot be used with --local-model: there is only one local model."
     fi
     if [[ "$settings_given" == true ]]; then
-        die "in-house mode sets --settings itself; put your settings in ~/.claude/settings.json."
+        die "local mode sets --settings itself; put your settings in ~/.claude/settings.json."
     fi
 
-    for cluster in "${in_house_clusters[@]}"; do
+    for cluster in "${local_clusters[@]}"; do
         [[ "${cluster,,}" == "${cluster_name,,}" ]] && cluster_allowed=true
     done
     if [[ "$cluster_allowed" != true ]]; then
-        die "in-house mode is only available on: ${in_house_clusters[*]}"
+        die "local mode is only available on: ${local_clusters[*]}"
     fi
     if ! command -v curl >/dev/null 2>&1; then
-        die "in-house mode needs curl to check the in-house model service, but curl was not found."
+        die "local mode needs curl to check the local model service, but curl was not found."
     fi
 
-    # Inherited provider settings could send in-house prompts elsewhere, and an
+    # Inherited provider settings could send local prompts elsewhere, and an
     # inherited effort level would pin the session to it.
     while IFS= read -r name; do
         base="${name#APPTAINERENV_}"
@@ -476,7 +480,7 @@ prepare_in_house_mode() {
         case "$base" in
             ANTHROPIC_*|CLAUDE_CODE_USE_*|CLAUDE_CODE_EXTRA_BODY|CLAUDE_CODE_EFFORT_LEVEL)
                 unset "$name"
-                warn "in-house mode ignores $name from your environment."
+                warn "local mode ignores $name from your environment."
                 ;;
         esac
     done < <(compgen -e)
@@ -485,28 +489,29 @@ prepare_in_house_mode() {
     if ! account="$(id -un)"; then
         die "cannot determine your account name."
     fi
-    export ANTHROPIC_AUTH_TOKEN="${account}.${in_house_agent_label}"
+    export ANTHROPIC_AUTH_TOKEN="${account}.${local_agent_label}"
 }
 
-# add_in_house_claude_opts: the environment, Claude options and banner for an
-# in-house session. Every variable goes both to Apptainer (--env) and into the
+# add_local_claude_opts: the environment, Claude options and banner for a
+# local session. Every variable goes both to Apptainer (--env) and into the
 # --settings env block, which outranks project and user settings. Values never
 # contain "=", which Apptainer's --env parsing relies on.
-# Reads: in_house_*. Sets: env_opts, mode_claude_opts.
-add_in_house_claude_opts() {
-    local label="${in_house_model} (YCRC in-house)" entry value env_json="" settings
+# Reads: local_*. Sets: env_opts, mode_claude_opts.
+add_local_claude_opts() {
+    local label="${local_model} (hosted by YCRC)" entry value env_json="" settings
     local -a session_env=(
-        "ANTHROPIC_BASE_URL=${in_house_base_url}"
-        "ANTHROPIC_MODEL=${in_house_model}"
+        "ANTHROPIC_BASE_URL=${local_base_url}"
+        "ANTHROPIC_MODEL=${local_model}"
         # "Default" in /model resolves to the Opus tier. The other tiers stay
-        # unmapped, so availableModels refuses them instead of silently giving the in-house model.
-        "ANTHROPIC_DEFAULT_OPUS_MODEL=${in_house_model}"
+        # unmapped, so availableModels refuses them instead of silently giving
+        # the local model.
+        "ANTHROPIC_DEFAULT_OPUS_MODEL=${local_model}"
         "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME=${label}"
-        "CLAUDE_CODE_SUBAGENT_MODEL=${in_house_model}"
+        "CLAUDE_CODE_SUBAGENT_MODEL=${local_model}"
         "CLAUDE_CODE_DISABLE_1M_CONTEXT=1"
-        "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${in_house_max_context}"
-        "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${in_house_max_output}"
-        # The auto-mode classifier then runs in Claude Code, on the in-house model.
+        "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${local_max_context}"
+        "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${local_max_output}"
+        # The auto-mode classifier then runs in Claude Code, on the local model.
         "CLAUDE_CODE_AUTO_MODE_SERVER=0"
         "CLAUDE_CODE_USE_BEDROCK=0"
         "CLAUDE_CODE_USE_VERTEX=0"
@@ -527,17 +532,18 @@ add_in_house_claude_opts() {
     # medium. maxEffortLevel takes max out of /effort: the service has nothing
     # above xhigh.
     printf -v settings '{"env":{%s},"maxEffortLevel":"xhigh","availableModels":["%s"],"modelPicker":{"options":[{"model":"%s","label":"%s"}],"replaceBuiltInOptions":true},"permissions":{"deny":["WebSearch"]}}' \
-        "$env_json" "$in_house_model" "$in_house_model" "$label"
+        "$env_json" "$local_model" "$local_model" "$label"
 
     mode_claude_opts=(
         --settings "$settings"
-        --append-system-prompt "This session runs on ${in_house_model}, YCRC's in-house model hosted at Yale, not on an Anthropic model, and web search is unavailable. Sessions are shared with the user's normal Claude Code, so continuing this session without --in-house-model would send it to Anthropic."
+        --append-system-prompt "This session runs on ${local_model}, a local model hosted by YCRC at Yale, not on an Anthropic model, and web search is unavailable. Sessions are shared with the user's normal Claude Code, so continuing this session without --local-model would send it to Anthropic."
     )
 
     printf '%s\n' \
-        "In-house mode: ${in_house_model} hosted by YCRC. This session's prompts and code are not sent to Anthropic." \
+        "Local model: ${local_model}, hosted by YCRC. This session's prompts and code are not sent to Anthropic." \
+        "Effort: low, medium or xhigh (/effort); high, the default, runs as medium." \
         "Sessions, settings and memory are shared with your normal Claude; continuing this session" \
-        "without --in-house-model sends it to Anthropic. See claude --ycrc-help." >&2
+        "without --local-model sends it to Anthropic. See claude --ycrc-help." >&2
 }
 
 # --- Bind ordering ------------------------------------------------------------

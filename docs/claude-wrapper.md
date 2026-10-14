@@ -17,8 +17,8 @@ The wrapper is responsible for:
 - applying read-only or read-write permissions to binds;
 - removing configured sensitive environment variables before launch;
 - preserving selected Claude state;
-- running Claude against YCRC's in-house model instead of Anthropic's, with
-  `claude --in-house-model`;
+- running Claude against a model hosted by YCRC instead of Anthropic's, with
+  `claude --local-model`;
 - printing module usage with `claude --ycrc-help`; and
 - forwarding all other command-line arguments to the container runscript.
 
@@ -39,7 +39,7 @@ claude-bind.conf             # Directories to bind and their permissions
 claude-path.conf             # Bound tool directories to prepend to container PATH
 claude-exclude.conf          # Directories forbidden as working directories
 claude-env.conf              # Sensitive environment-variable name patterns
-claude-in-house.conf         # In-house model service (read only with --in-house-model)
+claude-local-model.conf      # Local model service (read only with --local-model)
 claude-mod.sif               # Apptainer image
 ```
 
@@ -53,7 +53,7 @@ so code and documentation can be searched for each other. Most steps are written
 inline. `claude-wrapper-functions.sh` holds only the helpers used in more than
 one place (path checks, config loading, bind queueing) and the longer steps that
 would clutter the sequence (user binds, allowed storage roots, bind ordering,
-the help text, and in-house mode). Sourcing it defines functions and has no
+the help text, and local mode). Sourcing it defines functions and has no
 other effect.
 
 ## Runtime requirements
@@ -65,7 +65,7 @@ The wrapper expects these environment variables:
 - `CLUSTER`: the YCRC cluster name.
 
 It also expects `apptainer`, `hostname`, `realpath`, `groups`, `sort`, and
-standard Bash utilities to be available on the host; in-house mode also needs
+standard Bash utilities to be available on the host; local mode also needs
 `curl` and `id`. It uses Bash-specific
 features (arrays, namerefs, lowercase expansion) and must be run with Bash 4.4
 or newer, not POSIX `sh`.
@@ -77,16 +77,16 @@ The wrapper performs these operations in order:
 1. Enables `set -euo pipefail`, locates the image, configuration files and
    functions file, and sources the functions file.
 2. Takes the module's own options out of the arguments (`--ycrc-help`,
-   `--bind`, `-B`, `--in-house-model`); everything else is kept for Claude.
+   `--bind`, `-B`, `--local-model`); everything else is kept for Claude.
    `--model`, `--fallback-model` and `--settings` stay in Claude's arguments
-   but are noted for in-house mode. Scanning stops at `--`.
+   but are noted for local mode. Scanning stops at `--`.
 3. **Help:** with `--ycrc-help`, prints module usage and exits before any
    other check.
 4. Requires `HOME` and `CLUSTER`.
 5. **Login-node protection.**
 6. **Environment scrubbing** (`claude-env.conf`).
-7. **In-house mode** (only with `--in-house-model`): loads and checks
-   `claude-in-house.conf`, applies the in-house argument rules, checks the
+7. **Local mode** (only with `--local-model`): loads and checks
+   `claude-local-model.conf`, applies the local-mode argument rules, checks the
    cluster and `curl`, removes inherited provider settings, and exports the
    user-scoped credential.
 8. **Claude state:** creates `$HOME/.claude` and `$HOME/.local/share/claude`.
@@ -101,8 +101,8 @@ The wrapper performs these operations in order:
 14. **User binds** (`--bind`).
 15. **GPU support.**
 16. **Bind ordering.**
-17. **In-house session** (only with `--in-house-model`): checks that the
-    in-house service is up, then adds the session's environment, Claude
+17. **Local session** (only with `--local-model`): checks that the
+    local model service is up, then adds the session's environment, Claude
     options and banner.
 18. **Launch** with `apptainer run`.
 
@@ -377,8 +377,8 @@ $HOME/.claude
 $HOME/.local/share/claude
 ```
 
-Their bind permissions are controlled by `claude-bind.conf`. In-house mode uses
-the same state (see "Shared state" under "In-house mode").
+Their bind permissions are controlled by `claude-bind.conf`. Local mode uses
+the same state (see "Shared state" under "Local model mode").
 
 `$HOME/.claude.json` is optional and never created. If it exists as a regular
 file (or a valid symlink to one), it is bound into the container at the same
@@ -444,12 +444,14 @@ Each directory is checked in this order; the first matching outcome applies.
 - One line per bind is printed to stderr, for example
   `Binding read-only: /nfs/roberts/project/pi_example/shared`.
 
-## In-house mode
+## Local model mode
 
-`claude --in-house-model` runs Claude Code against YCRC's in-house model
-instead of Anthropic's. The model is requested by a stable alias, `ycrc-local`, which the
-service maps to whatever it currently serves (`Qwen3.8-Flash-Next` as of
-October 2026), so a model swap needs no module rebuild. It is served by vLLM
+`claude --local-model` runs Claude Code against a model hosted by YCRC, *the
+local model*, instead of Anthropic's. "Local" means hosted by YCRC on a shared
+GPU server, not running on the user's own node. The model is requested by a
+stable alias, `ycrc-local`, which the service maps to whatever it currently
+serves (`Qwen3.8-Flash-Next` as of October 2026), so a model swap needs no
+module rebuild. It is served by vLLM
 on a Bouchet GPU node, behind a gateway that speaks Anthropic's Messages API.
 The session's prompts, code and tool results go only to that service, not to
 Anthropic.
@@ -458,59 +460,59 @@ It is meant to feel like a model switch, not a different environment: Claude
 keeps the user's normal state, settings, skills, plugins, memory and sessions.
 
 ```bash
-claude --in-house-model                      # interactive
-claude --in-house-model -p "Summarize x.py"  # one-shot
-claude --in-house-model --resume <id>        # continue a session on the in-house model
+claude --local-model                      # interactive
+claude --local-model -p "Summarize x.py"  # one-shot
+claude --local-model --resume <id>        # continue a session on the local model
 ```
 
-`--in-house-model` is recognized only before `--`. `--in-house-model=NAME` is
-refused; that form is reserved for choosing among several in-house models.
-In-house mode is available only on the clusters listed in
-`claude-in-house.conf` (currently Bouchet).
+`--local-model` is recognized only before `--`. `--local-model=NAME` is
+refused; that form is reserved for choosing among several local models.
+Local mode is available only on the clusters listed in
+`claude-local-model.conf` (currently Bouchet).
 
 ### Configuration
 
-`claude-in-house.conf` is an administrator-controlled Bash file, read only in
-in-house mode. A missing or broken file stops in-house mode and never affects
+`claude-local-model.conf` is an administrator-controlled Bash file, read only in
+local mode. A missing or broken file stops local mode and never affects
 the default mode. It contains no secrets.
 
 ```bash
-in_house_clusters=(bouchet)
-in_house_base_url='http://a1127u31n01.mghpcc.ycrc.yale.edu:8008'
-in_house_model='ycrc-local'         # stable alias; the service maps it to whichever model it serves
-in_house_agent_label='claude-mod'   # credential is "<netid>.<label>"; the gateway knows claude-mod, claude, codex, copilot, pi
-in_house_max_context='262000'
-in_house_max_output='16384'
+local_clusters=(bouchet)
+local_base_url='http://a1127u31n01.mghpcc.ycrc.yale.edu:8008'
+local_model='ycrc-local'         # stable alias; the service maps it to whichever model it serves
+local_agent_label='claude-mod'   # credential is "<netid>.<label>"; the gateway knows claude-mod, claude, codex, copilot, pi
+local_max_context='262000'
+local_max_output='16384'
 ```
 
 Every listed variable is unset before the file is sourced, so an inherited
-environment variable (for example an exported `in_house_base_url`) cannot fill
+environment variable (for example an exported `local_base_url`) cannot fill
 a gap in the file. Each must then be set and non-empty, and:
 
-- `in_house_clusters` must be an array;
-- `in_house_base_url` must be `http(s)://host[:port][/path]`; a trailing `/` is
+- `local_clusters` must be an array;
+- `local_base_url` must be `http(s)://host[:port][/path]`; a trailing `/` is
   removed;
-- `in_house_model` may contain only letters, digits and `._:/@-`, and
-  `in_house_agent_label` only letters, digits, `_` and `-`. Labels the gateway
+- `local_model` may contain only letters, digits and `._:/@-`, and
+  `local_agent_label` only letters, digits, `_` and `-`. Labels the gateway
   doesn't know are accounted as `unknown`;
-- `in_house_max_context` and `in_house_max_output` must be positive integers.
+- `local_max_context` and `local_max_output` must be positive integers.
 
 ### Preflight
 
-The **In-house mode** step runs right after environment scrubbing, before any
+The **Local mode** step runs right after environment scrubbing, before any
 other work. In order, it:
 
-1. loads and checks `claude-in-house.conf`;
+1. loads and checks `claude-local-model.conf`;
 2. applies the argument rules:
-   - `--model` (either form) may name only the in-house model or `default`.
+   - `--model` (either form) may name only the local model or `default`.
      Anything else, including Claude aliases such as `opus`, stops the launch
-     with a message suggesting `claude` without `--in-house-model`;
+     with a message suggesting `claude` without `--local-model`;
    - `--effort` (either form) may be only `low`, `medium` or `xhigh`;
    - `--fallback-model` is refused, since there is only one model;
-   - a user `--settings` is refused, because in-house mode passes its own
-     `--settings` (see "In-house session") and Claude accepts only one. User
+   - a user `--settings` is refused, because local mode passes its own
+     `--settings` (see "Local session") and Claude accepts only one. User
      settings belong in `~/.claude/settings.json`;
-3. requires `CLUSTER` to be in `in_house_clusters` and `curl` to be available;
+3. requires `CLUSTER` to be in `local_clusters` and `curl` to be available;
 4. unsets every exported `ANTHROPIC_*`, `CLAUDE_CODE_USE_*`,
    `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL`, and the same names
    with an `APPTAINERENV_` or `SINGULARITYENV_` prefix, printing one warning per
@@ -523,9 +525,9 @@ other work. In order, it:
    user to the gateway for accounting; it is not a password. When it is set,
    Claude Code uses it instead of the user's claude.ai login.
 
-### In-house session
+### Local session
 
-The **In-house session** step runs after every local check, so local mistakes
+The **Local session** step runs after every local check, so local mistakes
 are reported without a network wait.
 
 **Service check.** A quick request with the user's credential:
@@ -544,25 +546,25 @@ research.computing@yale.edu if it persists.":
 
 | Result | Message |
 | --- | --- |
-| Connection fails or times out | YCRC's in-house model service (host:port) isn't reachable right now. |
-| HTTP 502 | the in-house model service is up, but its model server isn't responding. |
-| Another non-200 status | the in-house model service returned HTTP <code>. |
-| 200, model not listed | the in-house model service doesn't offer <model>. (The conf may be out of date.) |
+| Connection fails or times out | YCRC's local model service (host:port) isn't reachable right now. |
+| HTTP 502 | the local model service is up, but its model server isn't responding. |
+| Another non-200 status | the local model service returned HTTP <code>. |
+| 200, model not listed | the local model service doesn't offer <model>. (The conf may be out of date.) |
 
 **Environment.** Each variable is passed both to Apptainer (`--env`) and in the
 `env` block of the `--settings` argument below. Settings given on the command
 line outrank project and user settings, so neither a project's nor the user's
-own `settings.json` can redirect an in-house session or change these values.
+own `settings.json` can redirect a local session or change these values.
 
 | Variable | Value | Why |
 | --- | --- | --- |
-| `ANTHROPIC_BASE_URL` | `in_house_base_url` | Where requests go. |
-| `ANTHROPIC_MODEL` | `in_house_model` | The session's model. |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL`, `..._NAME` | the model; "<model> (YCRC in-house)" | "Default" in `/model` resolves to the Opus tier. The other tiers are left unmapped, so they are refused (see "Choosing a model"). |
+| `ANTHROPIC_BASE_URL` | `local_base_url` | Where requests go. |
+| `ANTHROPIC_MODEL` | `local_model` | The session's model. |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL`, `..._NAME` | the model; "<model> (hosted by YCRC)" | "Default" in `/model` resolves to the Opus tier. The other tiers are left unmapped, so they are refused (see "Choosing a model"). |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | the model | Default model for subagents (`_FORCE` is never set). |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | `1` | Otherwise "Default" picks a 1M-context variant. |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | from the conf | Claude Code doesn't know the model's limits; without the output limit it asks for 32000 tokens. |
-| `CLAUDE_CODE_AUTO_MODE_SERVER` | `0` | vLLM has no server-side auto-mode classifier (see "Auto mode in in-house mode"). |
+| `CLAUDE_CODE_AUTO_MODE_SERVER` | `0` | vLLM has no server-side auto-mode classifier (see "Auto mode in local mode"). |
 | `CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY` | `0` | No other provider. |
 | `DISABLE_BUG_COMMAND` | `1` | `/bug` can upload the session to Anthropic. |
 
@@ -572,37 +574,38 @@ inherited `CLAUDE_CONFIG_DIR` applies in both modes.
 **Claude options**, placed before `--add-dir` and the user's arguments:
 
 - `--settings` with the `env` block above, plus
-  `maxEffortLevel: "xhigh"` (see "Effort"), `availableModels: ["<model>"]`, a `modelPicker` with the in-house model as its
+  `maxEffortLevel: "xhigh"` (see "Effort"), `availableModels: ["<model>"]`, a `modelPicker` with the local model as its
   only row (`replaceBuiltInOptions: true`), and `permissions.deny:
   ["WebSearch"]`, since web search is a server-side tool the service lacks;
 - `--append-system-prompt`, telling the model that the session runs on YCRC's
-  in-house model, that web search is unavailable, and that continuing the
-  session without `--in-house-model` would send it to Anthropic.
+  local model, that web search is unavailable, and that continuing the
+  session without `--local-model` would send it to Anthropic.
 
 **Banner** on stderr:
 
 ```text
-In-house mode: ycrc-local hosted by YCRC. This session's prompts and code are not sent to Anthropic.
+Local model: ycrc-local, hosted by YCRC. This session's prompts and code are not sent to Anthropic.
+Effort: low, medium or xhigh (/effort); high, the default, runs as medium.
 Sessions, settings and memory are shared with your normal Claude; continuing this session
-without --in-house-model sends it to Anthropic. See claude --ycrc-help.
+without --local-model sends it to Anthropic. See claude --ycrc-help.
 ```
 
 ### Choosing a model
 
-The in-house model is the only choice. Asking for a Claude model gives a
-clear refusal rather than silently running the in-house model:
+The local model is the only choice. Asking for a Claude model gives a
+clear refusal rather than silently running the local model:
 
 | The user does | Result |
 | --- | --- |
-| `/model` (picker) | Rows: Default and the in-house model, both naming it |
-| `/model default` or `/model opus` | "Set model to `ycrc-local (YCRC in-house)` for this session only" |
-| `/model sonnet`, `haiku`, `fable`, `opusplan`, or a Claude model ID | "Model '…' is not available. Your organization restricts model selection." The session stays on the in-house model. |
+| `/model` (picker) | Rows: Default and the local model, both naming it |
+| `/model default` or `/model opus` | "Set model to `ycrc-local (hosted by YCRC)` for this session only" |
+| `/model sonnet`, `haiku`, `fable`, `opusplan`, or a Claude model ID | "Model '…' is not available. Your organization restricts model selection." The session stays on the local model. |
 | `--model` with a Claude model at launch | Stopped by the wrapper (see "Preflight") |
 | An agent, skill or teammate that names a Claude model | Claude Code warns and uses the session's model |
 
-The "Your organization…" wording is Claude Code's. In in-house mode, Claude
+The "Your organization…" wording is Claude Code's. In local mode, Claude
 Code applies a `/model` choice "for this session only". To use a Claude model, exit
-and start `claude` without `--in-house-model`, optionally with `--resume <id>`
+and start `claude` without `--local-model`, optionally with `--resume <id>`
 to continue the same conversation.
 
 ### Shared state
@@ -613,36 +616,36 @@ memory, prompt history), `~/.claude.json` and `~/.local/share/claude`. In
 practice:
 
 - the launch environment and `--settings` win over a saved `model`, so a
-  commercial-mode setting cannot break an in-house launch. Claude Code saves
-  effort per model, so a level saved for Opus never reaches the in-house model;
-- an in-house session writes its transcript (and any memory the model saves).
+  commercial-mode setting cannot break a local launch. Claude Code saves
+  effort per model, so a level saved for Opus never reaches the local model;
+- a local session writes its transcript (and any memory the model saves).
   `/effort` saves its level under `modelSettings.ycrc-local` in
-  `~/.claude/settings.json`, and later in-house sessions start at it. Other
+  `~/.claude/settings.json`, and later local sessions start at it. Other
   settings are unchanged;
 - sessions move between modes in both directions with `--resume` or
-  `--continue`: a commercial session continues on the in-house model, and an
-  in-house session continues on Claude;
+  `--continue`: a commercial session continues on the local model, and an
+  local session continues on Claude;
 - the user's own MCP servers load in both modes. claude.ai connectors do not
-  load in in-house mode: Claude Code turns them off when another credential is
+  load in local mode: Claude Code turns them off when another credential is
   set, and prints a one-line notice saying so at startup, which is expected.
 
-### When in-house content can reach Anthropic
+### When local-model content can reach Anthropic
 
-An in-house session's own requests go only to YCRC's service. Because state is
+A local session's own requests go only to YCRC's service. Because state is
 shared, its content can reach Anthropic later, in a commercial session:
 
 | Case | What reaches Anthropic | When |
 | --- | --- | --- |
-| Continuing an in-house session without `--in-house-model` (`claude --resume`, `--continue`, or picking it from the resume list) | the whole transcript so far | on the first commercial turn |
-| Auto-memory written during an in-house session (the model saves memory on its own, for example when told to remember something) | that project's memory notes | whenever a later commercial session in the same project loads memory |
-| Edits to a `CLAUDE.md` made during an in-house session | the edited text | every later commercial session that loads it |
+| Continuing a local session without `--local-model` (`claude --resume`, `--continue`, or picking it from the resume list) | the whole transcript so far | on the first commercial turn |
+| Auto-memory written during a local session (the model saves memory on its own, for example when told to remember something) | that project's memory notes | whenever a later commercial session in the same project loads memory |
+| Edits to a `CLAUDE.md` made during a local session | the edited text | every later commercial session that loads it |
 | Files Claude wrote or changed | their content, if a later commercial session reads them | as for any file |
 | Prompt history (`~/.claude/history.jsonl`) | a past prompt, if the user recalls and re-sends it | when re-sent |
 
-To keep work in-house, start a new commercial session rather than continuing an
-in-house one, and review the project's memory (`/memory`) before switching.
+To keep work away from Anthropic, start a new commercial session rather than continuing a
+local one, and review the project's memory (`/memory`) before switching.
 
-### Auto mode in in-house mode
+### Auto mode in local mode
 
 Auto mode works in both modes. A tool call is decided in the same order:
 
@@ -650,13 +653,13 @@ Auto mode works in both modes. A tool call is decided in the same order:
 2. Claude Code's fast paths for read-only tools and edits inside the project,
    which need no classifier;
 3. for everything else, a safety classifier. In the default mode, Anthropic's
-   servers run it. In in-house mode, `CLAUDE_CODE_AUTO_MODE_SERVER=0` makes
-   Claude Code run it itself, as one or two extra requests to **the in-house
+   servers run it. In local mode, `CLAUDE_CODE_AUTO_MODE_SERVER=0` makes
+   Claude Code run it itself, as one or two extra requests to **the local
    model**. Nothing about the decision goes to Anthropic.
 
 What users notice: a command that needs judging takes a few seconds longer
 (about 2.5 s when allowed, 5.5 s when blocked), and a blocked command comes with
-a reason, such as "[Data Exfiltration]". The in-house model is a general model
+a reason, such as "[Data Exfiltration]". The local model is a general model
 doing a job Anthropic's classifier is tuned for, and its judgment has not been
 evaluated as thoroughly. Users who want to approve every command themselves can
 start with `--permission-mode default` or switch modes with Shift+Tab. Each
@@ -695,7 +698,7 @@ Claude Code allows:
 - **The model reasons on every turn**, at the effort level. This adds output
   tokens and latency. Claude Code shows no thinking-token count, because the
   service doesn't report one.
-- **Ignore the dollar cost** Claude Code shows for the in-house model; it is an
+- **Ignore the dollar cost** Claude Code shows for the local model; it is an
   estimate with no price behind it.
 - **Usage is recorded per netid.** The gateway records token counts per netid
   and model, not prompts or code.
@@ -711,7 +714,7 @@ Claude Code allows:
 
 ### Service contract
 
-The gateway and its configuration belong to the in-house service, not to this
+The gateway and its configuration belong to the local model service, not to this
 module. The wrapper relies on these behaviors; if they change, the conf or the
 wrapper must follow:
 
@@ -761,11 +764,11 @@ apptainer run \
     --contain \
     <optional --nv> \
     <optional --env PREPEND_PATH=...> \
-    <in-house mode: --env NAME=VALUE for the session environment> \
+    <local mode: --env NAME=VALUE for the session environment> \
     <ordered --bind arguments> \
     --pwd "$work_dir" \
     "$image" \
-    <in-house mode: --settings JSON --append-system-prompt TEXT> \
+    <local mode: --settings JSON --append-system-prompt TEXT> \
     <--add-dir=DIR for each user bind> \
     <arguments for Claude>
 ```
@@ -790,7 +793,7 @@ the parent-first ordering described in "Bind ordering".
 The wrapper exits nonzero without starting Claude when it encounters:
 
 - a malformed module option (`--bind` without a value, a custom destination or
-  unknown mode, `--in-house-model=NAME`);
+  unknown mode, `--local-model=NAME`);
 - an unset `HOME`, or an unset or unsupported `CLUSTER`;
 - a login node;
 - a missing or unreadable functions or configuration file;
@@ -805,10 +808,10 @@ The wrapper exits nonzero without starting Claude when it encounters:
   in "User binds";
 - a missing `apptainer` command;
 - a missing or unreadable `claude-mod.sif`; or
-- in in-house mode only: a missing or invalid `claude-in-house.conf`, an
+- in local mode only: a missing or invalid `claude-local-model.conf`, an
   unsupported cluster, a missing `curl`, a refused `--model`,
   `--fallback-model` or `--settings`, or a failed service check (see
-  "In-house mode").
+  "Local model mode").
 
 Missing optional bind and PATH entries are silently skipped. Missing exclusion
 paths produce warnings and are skipped. `--bind` directories that are already
@@ -855,18 +858,18 @@ Also test a symlinked Conda layout if the deployed configuration includes
 `.conda/envs` or `.conda/pkgs`, and a `--bind` of the working directory's parent
 (the working directory must stay writable).
 
-For in-house mode, on a Bouchet compute node:
+For local mode, on a Bouchet compute node:
 
 ```bash
-# Expected to answer, naming the in-house model and YCRC.
-claude --in-house-model -p "Which model are you, and who hosts you?"
+# Expected to answer, naming the local model and YCRC.
+claude --local-model -p "Which model are you, and who hosts you?"
 
 # Your request appears in the gateway's accounting under your netid.
 curl -s http://a1127u31n01.mghpcc.ycrc.yale.edu:9103/metrics | grep "netid=\"$(id -un)\""
 
-# Expected to stop: in-house mode offers one model.
-claude --in-house-model --model opus
+# Expected to stop: local mode offers one model.
+claude --local-model --model opus
 ```
 
-Inside an in-house session, `/model` should list only Default and the in-house
+Inside a local session, `/model` should list only Default and the local
 model, and `/model sonnet` should be refused.

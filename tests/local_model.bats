@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# Tests for `claude --in-house-model`: YCRC's in-house model instead of Anthropic's.
-# The shipped claude-in-house.conf is installed in every sandbox; the curl stub
+# Tests for `claude --local-model`: a model hosted by YCRC instead of Anthropic's.
+# The shipped claude-local-model.conf is installed in every sandbox; the curl stub
 # answers the service check (STUB_SERVICE, see the harness).
 # SC2016: config fixtures and jq filters are single-quoted on purpose.
 # SC2030/SC2031/SC2034: tests set variables (WORK_DIR, WRAPPER_ENV, ...) the harness reads.
@@ -13,21 +13,21 @@ GATEWAY=http://a1127u31n01.mghpcc.ycrc.yale.edu:8008
 
 setup() {
     harness_setup
-    IN_HOUSE_CONF="${INSTALL_DIR}/claude-in-house.conf"
-    cp -- "${WRAPPER_DIR}/claude-in-house.conf" "$IN_HOUSE_CONF"
+    LOCAL_CONF="${INSTALL_DIR}/claude-local-model.conf"
+    cp -- "${WRAPPER_DIR}/claude-local-model.conf" "$LOCAL_CONF"
 }
 
-# set_in_house LINE: append an assignment to the conf; the last one wins.
-set_in_house() {
-    printf '%s\n' "$1" >> "$IN_HOUSE_CONF"
+# set_local LINE: append an assignment to the conf; the last one wins.
+set_local() {
+    printf '%s\n' "$1" >> "$LOCAL_CONF"
 }
 
 # setup_conf_with NAME=VALUE: a fresh copy of the shipped conf with NAME's
 # assignment replaced by this one.
 setup_conf_with() {
-    cp -- "${WRAPPER_DIR}/claude-in-house.conf" "$IN_HOUSE_CONF"
-    sed -i "/^${1%%=*}=/d" "$IN_HOUSE_CONF"
-    set_in_house "$1"
+    cp -- "${WRAPPER_DIR}/claude-local-model.conf" "$LOCAL_CONF"
+    sed -i "/^${1%%=*}=/d" "$LOCAL_CONF"
+    set_local "$1"
 }
 
 # env_value NAME: the value given to apptainer as --env NAME=...; fails if absent.
@@ -84,19 +84,19 @@ curl_argv_contains() {
 
 # --- Starting the mode --------------------------------------------------------
 
-@test "in-house: --in-house-model launches against the in-house service" {
-    run_wrapper --in-house-model -p hi
+@test "local-model: --local-model launches against the local model service" {
+    run_wrapper --local-model -p hi
     assert_success
     assert_apptainer_called
     assert_env ANTHROPIC_BASE_URL "$GATEWAY"
     [[ "$(claude_args | tail -n 2 | paste -sd ' ')" == "-p hi" ]] || fail "user args not last: $(claude_args)"
-    if claude_args | grep -Fxq -- --in-house-model; then
-        fail "--in-house-model was passed to Claude"
+    if claude_args | grep -Fxq -- --local-model; then
+        fail "--local-model was passed to Claude"
     fi
 }
 
-@test "in-house: without the flag nothing changes, and the conf is not needed" {
-    rm -- "$IN_HOUSE_CONF"
+@test "local-model: without the flag nothing changes, and the conf is not needed" {
+    rm -- "$LOCAL_CONF"
     run_wrapper -p hi
     assert_success
     assert_claude_args -p hi
@@ -105,28 +105,37 @@ curl_argv_contains() {
     true
 }
 
-@test "in-house: after --, --in-house-model is passed to Claude" {
-    run_wrapper -- --in-house-model
+@test "local-model: after --, --local-model is passed to Claude" {
+    run_wrapper -- --local-model
     assert_success
-    assert_claude_args -- --in-house-model
+    assert_claude_args -- --local-model
     refute_env ANTHROPIC_BASE_URL
 }
 
-@test "in-house: --in-house-model=NAME is reserved" {
-    run_wrapper --in-house-model=other
+@test "local-model: the old --in-house-model is just passed to Claude" {
+    run_wrapper --in-house-model -p hi
+    assert_success
+    assert_claude_args --in-house-model -p hi
+    refute_env ANTHROPIC_BASE_URL
+    curl_was_called && fail "the service check ran"
+    true
+}
+
+@test "local-model: --local-model=NAME is reserved" {
+    run_wrapper --local-model=other
     assert_failure
-    assert_output --partial "--in-house-model takes no value"
+    assert_output --partial "--local-model takes no value"
     refute_apptainer_called
 }
 
 # --- Environment --------------------------------------------------------------
 
-@test "in-house: default-session environment" {
-    run_wrapper --in-house-model
+@test "local-model: default-session environment" {
+    run_wrapper --local-model
     assert_success
     assert_env ANTHROPIC_MODEL "$MODEL"
     assert_env ANTHROPIC_DEFAULT_OPUS_MODEL "$MODEL"
-    assert_env ANTHROPIC_DEFAULT_OPUS_MODEL_NAME "$MODEL (YCRC in-house)"
+    assert_env ANTHROPIC_DEFAULT_OPUS_MODEL_NAME "$MODEL (hosted by YCRC)"
     assert_env CLAUDE_CODE_SUBAGENT_MODEL "$MODEL"
     assert_env CLAUDE_CODE_DISABLE_1M_CONTEXT 1
     assert_env CLAUDE_CODE_MAX_CONTEXT_TOKENS 262000
@@ -143,8 +152,8 @@ curl_argv_contains() {
     true
 }
 
-@test "in-house: reasoning is left to the effort level, with no extra body" {
-    run_wrapper --in-house-model
+@test "local-model: reasoning is left to the effort level, with no extra body" {
+    run_wrapper --local-model
     assert_success
     refute_env CLAUDE_CODE_EXTRA_BODY
     stub_environment CLAUDE_CODE_EXTRA_BODY >/dev/null && fail "CLAUDE_CODE_EXTRA_BODY is set in the environment"
@@ -152,9 +161,9 @@ curl_argv_contains() {
         fail "settings: $(claude_option --settings)"
 }
 
-@test "in-house: the credential is <id -un>.claude-mod, from id -un, and not in argv" {
+@test "local-model: the credential is <id -un>.claude-mod, from id -un, and not in argv" {
     WRAPPER_ENV=(USER=someone-else)
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_success
     local expected
     expected="$(id -un).claude-mod"
@@ -163,7 +172,7 @@ curl_argv_contains() {
     refute_argv_contains "$expected"
 }
 
-@test "in-house: inherited provider settings are removed; the default mode keeps them" {
+@test "local-model: inherited provider settings are removed; the default mode keeps them" {
     WRAPPER_ENV=(
         ANTHROPIC_BASE_URL=http://elsewhere.example:1
         ANTHROPIC_MODEL=claude-elsewhere
@@ -178,10 +187,10 @@ curl_argv_contains() {
                     CLAUDE_CODE_EXTRA_BODY CLAUDE_CODE_EFFORT_LEVEL APPTAINERENV_ANTHROPIC_BASE_URL
                     SINGULARITYENV_CLAUDE_CODE_USE_VERTEX)
 
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_success
     for name in "${names[@]}"; do
-        stub_environment "$name" >/dev/null && fail "$name was inherited in in-house mode"
+        stub_environment "$name" >/dev/null && fail "$name was inherited in local mode"
         assert_output --partial "$name"
     done
 
@@ -192,20 +201,20 @@ curl_argv_contains() {
     done
 }
 
-@test "in-house: an inherited CLAUDE_CONFIG_DIR is kept in both modes" {
+@test "local-model: an inherited CLAUDE_CONFIG_DIR is kept in both modes" {
     WRAPPER_ENV=(CLAUDE_CONFIG_DIR=/somewhere)
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_success
-    [[ "$(stub_environment CLAUDE_CONFIG_DIR)" == /somewhere ]] || fail "removed in in-house mode"
+    [[ "$(stub_environment CLAUDE_CONFIG_DIR)" == /somewhere ]] || fail "removed in local mode"
     run_wrapper
     [[ "$(stub_environment CLAUDE_CONFIG_DIR)" == /somewhere ]] || fail "removed in the default mode"
 }
 
 # --- Claude options -----------------------------------------------------------
 
-@test "in-house: --settings and --append-system-prompt come before --add-dir and the user's args" {
+@test "local-model: --settings and --append-system-prompt come before --add-dir and the user's args" {
     mkdir -p "${SANDBOX}/data"
-    run_wrapper --in-house-model --bind="${SANDBOX}/data" -p hi
+    run_wrapper --local-model --bind="${SANDBOX}/data" -p hi
     assert_success
     local -a args
     mapfile -t args < <(claude_args)
@@ -217,8 +226,8 @@ curl_argv_contains() {
     assert_bind "${SANDBOX}/data:${SANDBOX}/data:ro"
 }
 
-@test "in-house: --settings routes, restricts the model choice, and denies WebSearch" {
-    run_wrapper --in-house-model
+@test "local-model: --settings routes, restricts the model choice, and denies WebSearch" {
+    run_wrapper --local-model
     assert_success
     local filter
     for filter in \
@@ -229,73 +238,75 @@ curl_argv_contains() {
         '.env | has("CLAUDE_CODE_EFFORT_LEVEL") | not' \
         '.env.CLAUDE_CODE_USE_BEDROCK == "0" and .env.CLAUDE_CODE_USE_VERTEX == "0" and .env.CLAUDE_CODE_USE_FOUNDRY == "0"' \
         ".availableModels == [\"$MODEL\"]" \
-        ".modelPicker.options == [{\"model\": \"$MODEL\", \"label\": \"$MODEL (YCRC in-house)\"}]" \
+        ".modelPicker.options == [{\"model\": \"$MODEL\", \"label\": \"$MODEL (hosted by YCRC)\"}]" \
         '.modelPicker.replaceBuiltInOptions == true' \
         '.permissions.deny == ["WebSearch"]'; do
         settings_jq "$filter" >/dev/null || fail "settings fail [$filter]: $(claude_option --settings)"
     done
 }
 
-@test "in-house: the system-prompt note names the model and the shared sessions" {
-    run_wrapper --in-house-model
+@test "local-model: the system-prompt note names the model and the shared sessions" {
+    run_wrapper --local-model
     assert_success
     local note
     note="$(claude_option --append-system-prompt)"
-    [[ "$note" == *"$MODEL"* && "$note" == *YCRC* && "$note" == *"--in-house-model"* ]] ||
+    [[ "$note" == *"$MODEL"* && "$note" == *YCRC* && "$note" == *"--local-model"* ]] ||
         fail "note: $note"
 }
 
-@test "in-house: the in-house model, default, --resume and --continue pass through" {
+@test "local-model: the local model, default, --resume and --continue pass through" {
     local -a case_args
     local spec
     for spec in "--model $MODEL" "--model=$MODEL" "--model default" "--model=default" \
                 "--resume abc123" "--continue"; do
         read -r -a case_args <<< "$spec"
-        run_wrapper --in-house-model "${case_args[@]}" -p hi
+        run_wrapper --local-model "${case_args[@]}" -p hi
         assert_success
         [[ "$(claude_args | tail -n $(( ${#case_args[@]} + 2 )) | paste -sd ' ')" == "$spec -p hi" ]] ||
             fail "[$spec] claude args: $(claude_args)"
     done
 }
 
-@test "in-house: the banner is on stderr and mentions shared sessions" {
-    run_wrapper --separate-stderr --in-house-model
+@test "local-model: the banner is on stderr and mentions shared sessions" {
+    run_wrapper --separate-stderr --local-model
     assert_success
     assert_output ""
-    [[ "$stderr" == *"In-house mode: $MODEL hosted by YCRC"* ]] || fail "no banner: $stderr"
+    [[ "$stderr" == *"Local model: $MODEL, hosted by YCRC"* ]] || fail "no banner: $stderr"
     [[ "$stderr" == *"shared with your normal Claude"* ]] || fail "no shared-state note: $stderr"
+    [[ "$stderr" == *"Effort: low, medium or xhigh (/effort); high, the default, runs as medium."* ]] ||
+        fail "no effort line: $stderr"
 }
 
 # --- Shared state -------------------------------------------------------------
 
-@test "in-house: Claude state is bound exactly as in the default mode" {
+@test "local-model: Claude state is bound exactly as in the default mode" {
     set_conf bind 'binds=("$HOME/.claude:rw" "$HOME/.local/share/claude:rw")'
     : > "${TEST_HOME}/.claude.json"
     run_wrapper
     assert_success
     local default_binds
     default_binds="$(apptainer_binds)"
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_success
     [[ "$(apptainer_binds)" == "$default_binds" ]] ||
-        fail "binds differ:"$'\n'"default:"$'\n'"$default_binds"$'\n'"in-house:"$'\n'"$(apptainer_binds)"
+        fail "binds differ:"$'\n'"default:"$'\n'"$default_binds"$'\n'"local:"$'\n'"$(apptainer_binds)"
     assert_bind "${TEST_HOME}/.claude:${TEST_HOME}/.claude:rw"
     assert_bind "${TEST_HOME}/.claude.json:${TEST_HOME}/.claude.json"
 }
 
-@test "in-house: no separate state is created" {
-    run_wrapper --in-house-model
+@test "local-model: no separate state is created" {
+    run_wrapper --local-model
     assert_success
-    if compgen -G "${TEST_HOME}/.claude-in-house*" >/dev/null; then
+    if compgen -G "${TEST_HOME}/.claude-local*" >/dev/null; then
         fail "separate state was created: $(ls -a "$TEST_HOME")"
     fi
 }
 
 # --- Errors -------------------------------------------------------------------
 
-@test "in-house: other clusters are refused before any network check" {
+@test "local-model: other clusters are refused before any network check" {
     WRAPPER_ENV=(CLUSTER=mccleary)
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_failure
     assert_output --partial "only available on: bouchet"
     refute_apptainer_called
@@ -303,7 +314,7 @@ curl_argv_contains() {
     true
 }
 
-@test "in-house: each service failure has its own message" {
+@test "local-model: each service failure has its own message" {
     local -a cases=(
         "down|isn't reachable right now"
         "502|its model server isn't responding"
@@ -312,18 +323,18 @@ curl_argv_contains() {
     )
     local entry
     for entry in "${cases[@]}"; do
-        STUB_SERVICE="${entry%%|*}" run_wrapper --in-house-model
+        STUB_SERVICE="${entry%%|*}" run_wrapper --local-model
         assert_failure
         assert_output --partial "${entry#*|}"
         assert_output --partial "research.computing@yale.edu"
         refute_apptainer_called
     done
-    STUB_SERVICE=down run_wrapper --in-house-model
+    STUB_SERVICE=down run_wrapper --local-model
     assert_output --partial "a1127u31n01.mghpcc.ycrc.yale.edu:8008"
 }
 
-@test "in-house: the service check is a GET of /v1/models with the user's credential" {
-    run_wrapper --in-house-model
+@test "local-model: the service check is a GET of /v1/models with the user's credential" {
+    run_wrapper --local-model
     assert_success
     curl_argv_contains "${GATEWAY}/v1/models"
     curl_argv_contains "Authorization: Bearer $(id -un).claude-mod"
@@ -332,16 +343,16 @@ curl_argv_contains() {
     fi
 }
 
-@test "in-house: the service check runs after the local checks" {
+@test "local-model: the service check runs after the local checks" {
     WORK_DIR="$TEST_HOME"
-    STUB_SERVICE=down run_wrapper --in-house-model
+    STUB_SERVICE=down run_wrapper --local-model
     assert_failure
     assert_output --partial "non-hidden subdirectory"
     curl_was_called && fail "the service was contacted before the local checks"
     true
 }
 
-@test "in-house: a missing curl is reported plainly" {
+@test "local-model: a missing curl is reported plainly" {
     # A PATH with the stubs and the tools the wrapper needs, but no curl.
     local bin="${SANDBOX}/nocurl" tool
     mkdir -p "$bin"
@@ -350,7 +361,7 @@ curl_argv_contains() {
     done
     cp -- "${STUB_DIR}/apptainer" "${STUB_DIR}/hostname" "${STUB_DIR}/groups" "$bin/"
     WRAPPER_ENV=("PATH=${bin}")
-    run_wrapper --in-house-model
+    run_wrapper --local-model
     assert_failure
     assert_output --partial "needs curl"
     refute_apptainer_called
@@ -359,22 +370,22 @@ curl_argv_contains() {
     assert_success
 }
 
-@test "in-house: a missing conf stops in-house mode only" {
-    rm -- "$IN_HOUSE_CONF"
-    run_wrapper --in-house-model
+@test "local-model: a missing conf stops local mode only" {
+    rm -- "$LOCAL_CONF"
+    run_wrapper --local-model
     assert_failure
-    assert_output --partial "in-house configuration not found"
+    assert_output --partial "local model configuration not found"
     refute_apptainer_called
     run_wrapper
     assert_success
 }
 
-@test "in-house: --effort high and max are refused; low, medium and xhigh pass through" {
+@test "local-model: --effort high and max are refused; low, medium and xhigh pass through" {
     local -a case_args
     local spec
     for spec in "--effort high" "--effort=max" "--effort ultracode"; do
         read -r -a case_args <<< "$spec"
-        run_wrapper --in-house-model "${case_args[@]}" -p hi
+        run_wrapper --local-model "${case_args[@]}" -p hi
         assert_failure
         assert_output --partial "use low, medium or xhigh"
         refute_apptainer_called
@@ -382,7 +393,7 @@ curl_argv_contains() {
     done
     for spec in "--effort low" "--effort=medium" "--effort xhigh"; do
         read -r -a case_args <<< "$spec"
-        run_wrapper --in-house-model "${case_args[@]}" -p hi
+        run_wrapper --local-model "${case_args[@]}" -p hi
         assert_success
         [[ "$(claude_args | tail -n $(( ${#case_args[@]} + 2 )) | paste -sd ' ')" == "$spec -p hi" ]] ||
             fail "[$spec] claude args: $(claude_args)"
@@ -392,21 +403,21 @@ curl_argv_contains() {
 }
 
 
-@test "in-house: malformed conf values are refused" {
+@test "local-model: malformed conf values are refused" {
     local line
     for line in \
-        "in_house_agent_label='claude mod'" \
-        "in_house_agent_label='a.b'" \
-        "in_house_base_url='ftp://host:1'" \
-        "in_house_base_url='http://host:1/v1?x=1'" \
-        "in_house_model='Qwen 3'" \
-        "in_house_model='a\"b'" \
-        "in_house_max_output='0'" \
-        "in_house_max_context='12k'" \
-        "in_house_clusters=()" \
-        "in_house_clusters='bouchet'"; do
+        "local_agent_label='claude mod'" \
+        "local_agent_label='a.b'" \
+        "local_base_url='ftp://host:1'" \
+        "local_base_url='http://host:1/v1?x=1'" \
+        "local_model='Qwen 3'" \
+        "local_model='a\"b'" \
+        "local_max_output='0'" \
+        "local_max_context='12k'" \
+        "local_clusters=()" \
+        "local_clusters='bouchet'"; do
         setup_conf_with "$line"
-        run_wrapper --in-house-model
+        run_wrapper --local-model
         assert_failure
         refute_apptainer_called
         curl_was_called && fail "[$line] the service was contacted"
@@ -414,31 +425,31 @@ curl_argv_contains() {
     true
 }
 
-@test "in-house: an inherited variable cannot fill a gap in the conf" {
-    sed -i '/^in_house_base_url=/d' "$IN_HOUSE_CONF"
-    WRAPPER_ENV=(in_house_base_url=http://elsewhere.example:1)
-    run_wrapper --in-house-model
+@test "local-model: an inherited variable cannot fill a gap in the conf" {
+    sed -i '/^local_base_url=/d' "$LOCAL_CONF"
+    WRAPPER_ENV=(local_base_url=http://elsewhere.example:1)
+    run_wrapper --local-model
     assert_failure
-    assert_output --partial "in_house_base_url"
+    assert_output --partial "local_base_url"
     curl_was_called && fail "the service was contacted"
     true
 }
 
-@test "in-house: other models, --fallback-model and a user --settings are refused" {
+@test "local-model: other models, --fallback-model and a user --settings are refused" {
     local -a case_args
     local spec
     for spec in "--model ${MODEL}-think" "--model opus" "--model=sonnet" \
                 "--model claude-sonnet-5" "--fallback-model x" "--fallback-model=x" \
                 "--settings {}" "--settings=/some/file.json"; do
         read -r -a case_args <<< "$spec"
-        run_wrapper --in-house-model "${case_args[@]}"
+        run_wrapper --local-model "${case_args[@]}"
         assert_failure
         refute_apptainer_called
     done
-    run_wrapper --model opus --in-house-model
+    run_wrapper --model opus --local-model
     assert_failure
-    assert_output --partial "start claude without --in-house-model"
-    run_wrapper --in-house-model --settings '{}'
+    assert_output --partial "start claude without --local-model"
+    run_wrapper --local-model --settings '{}'
     # shellcheck disable=SC2088  # the message names the path literally
     assert_output --partial "~/.claude/settings.json"
     # The default mode passes them on untouched.
@@ -447,10 +458,10 @@ curl_argv_contains() {
     assert_claude_args --model opus --fallback-model sonnet --settings '{}'
 }
 
-@test "in-house: --ycrc-help describes --in-house-model" {
+@test "local-model: --ycrc-help describes --local-model" {
     run_wrapper --ycrc-help
     assert_success
-    assert_output --partial "--in-house-model"
-    assert_output --partial "YCRC's in-house model"
+    assert_output --partial "--local-model"
+    assert_output --partial "hosted by YCRC"
     assert_output --partial "Bouchet only"
 }

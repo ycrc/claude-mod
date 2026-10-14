@@ -111,7 +111,7 @@ EOF
 #!/bin/bash
 echo "${STUB_GROUPS:-}"
 EOF
-    # The in-house service check. STUB_SERVICE: ok (default), down (connection
+    # The local model service check. STUB_SERVICE: ok (default), down (connection
     # fails), nomodel (200 without the model), or an HTTP status such as 502.
     cat > "${STUB_DIR}/curl" <<'EOF'
 #!/bin/bash

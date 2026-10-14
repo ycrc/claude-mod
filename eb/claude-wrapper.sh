@@ -6,7 +6,7 @@
 # Claude sees only the directory it was started from, administrator-chosen
 # paths, and directories the user names with --bind; sensitive environment
 # variables are removed first; and it cannot run on a login node. With
-# --in-house-model, Claude uses YCRC's in-house model instead of Anthropic's.
+# --local-model, Claude uses a model hosted by YCRC instead of Anthropic's.
 # Full policy: docs/claude-wrapper.md.
 #
 # Launch sequence:
@@ -14,7 +14,7 @@
 #   2. Check required environment variables.
 #   3. Login-node protection.
 #   4. Environment scrubbing.
-#   5. In-house mode, if requested: conf, arguments, cluster, credential.
+#   5. Local mode, if requested: conf, arguments, cluster, credential.
 #   6. Claude state directories.
 #   7. Admin binds (claude-bind.conf).
 #   8. Container PATH (claude-path.conf).
@@ -24,7 +24,7 @@
 #  12. User binds (--bind).
 #  13. GPU support.
 #  14. Bind ordering.
-#  15. In-house service check and session options, if requested.
+#  15. Local model service check and session options, if requested.
 #  16. Launch.
 #
 # Files read, all beside this script:
@@ -33,7 +33,7 @@
 #   claude-bind.conf              directories to bind and their modes
 #   claude-path.conf              bound tool directories to prepend to PATH
 #   claude-exclude.conf           directories that may not be the work dir
-#   claude-in-house.conf          the in-house model service (in-house mode only)
+#   claude-local-model.conf       the local model service (local mode only)
 #   claude-mod.sif                the Apptainer image
 # =============================================================================
 set -euo pipefail
@@ -55,15 +55,15 @@ env_config="${launcher_dir}/claude-env.conf"
 bind_config="${launcher_dir}/claude-bind.conf"
 path_config="${launcher_dir}/claude-path.conf"
 exclude_config="${launcher_dir}/claude-exclude.conf"
-in_house_config="${launcher_dir}/claude-in-house.conf"
+local_config="${launcher_dir}/claude-local-model.conf"
 
 # --- Module options -----------------------------------------------------------
 # Take the module's own options out of the arguments; everything else is meant
 # for Claude. Scanning stops at "--", which is passed on with everything after
 # it. --bind values are only syntax-checked here; their paths are checked under
 # "User binds". --model, --effort, --fallback-model and --settings stay in
-# Claude's arguments but are noted, because in-house mode restricts them; they
-# are checked once the in-house conf is loaded.
+# Claude's arguments but are noted, because local mode restricts them; they
+# are checked once the local model conf is loaded.
 # Sets: show_help, launch_mode, user_bind_specs, requested_models,
 # requested_efforts, fallback_model_given, settings_given, claude_args.
 show_help=false
@@ -83,12 +83,12 @@ while (( $# > 0 )); do
         --ycrc-help)
             show_help=true
             ;;
-        --in-house-model)
-            launch_mode=in-house
+        --local-model)
+            launch_mode=local
             ;;
-        --in-house-model=*)
-            # Reserved for choosing among several in-house models later.
-            die "--in-house-model takes no value."
+        --local-model=*)
+            # Reserved for choosing among several local models later.
+            die "--local-model takes no value."
             ;;
         --model|--model=*|--effort|--effort=*|--fallback-model|--fallback-model=*|--settings|--settings=*)
             option_name="${1%%=*}"
@@ -199,18 +199,19 @@ while IFS= read -r exported_name; do
     done
 done < <(compgen -e)
 
-# --- In-house mode ------------------------------------------------------------
-# With --in-house-model, Claude talks to YCRC's in-house model service instead
-# of Anthropic. Checked here, before any other work: the conf and its values,
-# the --model / --fallback-model / --settings rules, the cluster and curl. Then
-# inherited provider settings (ANTHROPIC_*, CLAUDE_CODE_USE_*, ...) are removed
-# so nothing can redirect the session, and the user-scoped credential
-# "<netid>.claude-mod" is exported for Apptainer to pass on; it identifies the user
-# to the service for accounting and is not a password. Claude state is shared
-# with the default mode, so nothing else changes until "In-house session" below.
-# Reads: claude-in-house.conf. Sets: in_house_*, ANTHROPIC_AUTH_TOKEN.
-if [[ "$launch_mode" == in-house ]]; then
-    prepare_in_house_mode
+# --- Local mode ---------------------------------------------------------------
+# With --local-model, Claude talks to the local model service, a model hosted
+# by YCRC, instead of Anthropic. Checked here, before any other work: the conf
+# and its values, the --model / --effort / --fallback-model / --settings rules,
+# the cluster and curl. Then inherited provider settings (ANTHROPIC_*,
+# CLAUDE_CODE_USE_*, ...) are removed so nothing can redirect the session, and
+# the user-scoped credential "<netid>.<label>" (label from the conf,
+# "claude-mod") is exported for Apptainer to pass on; it identifies the user to
+# the service for accounting and is not a password. Claude state is shared with
+# the default mode, so nothing else changes until "Local session" below.
+# Reads: claude-local-model.conf. Sets: local_*, ANTHROPIC_AUTH_TOKEN.
+if [[ "$launch_mode" == local ]]; then
+    prepare_local_mode
 fi
 
 # --- Claude state -------------------------------------------------------------
@@ -361,37 +362,37 @@ fi
 # parent. Reads: bind_entries. Sets: bind_opts.
 build_bind_opts
 
-# --- In-house session ---------------------------------------------------------
-# Last, after every local check, so local mistakes are reported without a
-# network wait. A quick GET /v1/models with the user's credential shows that
+# --- Local session ------------------------------------------------------------
+# Last, after every check on this node, so those mistakes are reported without
+# a network wait. A quick GET /v1/models with the user's credential shows that
 # the service answers, that the model server behind it is up (the gateway
 # returns 502 when it is not), and that the configured model is offered; GET
 # requests are not counted as usage. Then the session's environment, Claude
-# options and banner are added (see add_in_house_claude_opts).
+# options and banner are added (see add_local_claude_opts).
 # Sets: env_opts, mode_claude_opts (both empty in the default mode).
 env_opts=()
 mode_claude_opts=()
-if [[ "$launch_mode" == in-house ]]; then
-    service_name="${in_house_base_url#*://}"
+if [[ "$launch_mode" == local ]]; then
+    service_name="${local_base_url#*://}"
     service_name="${service_name%%/*}"
     service_help="Try again later, or contact research.computing@yale.edu if it persists."
     if ! service_reply="$(curl -sS --connect-timeout 3 -m 5 -w '\n%{http_code}' \
             -H "Authorization: Bearer ${ANTHROPIC_AUTH_TOKEN}" \
-            "${in_house_base_url}/v1/models" 2>/dev/null)"; then
-        die "YCRC's in-house model service (${service_name}) isn't reachable right now." "$service_help"
+            "${local_base_url}/v1/models" 2>/dev/null)"; then
+        die "YCRC's local model service (${service_name}) isn't reachable right now." "$service_help"
     fi
     service_status="${service_reply##*$'\n'}"
     case "$service_status" in
         200) ;;
-        502) die "the in-house model service is up, but its model server isn't responding." "$service_help" ;;
-        *) die "the in-house model service returned HTTP ${service_status}." "$service_help" ;;
+        502) die "the local model service is up, but its model server isn't responding." "$service_help" ;;
+        *) die "the local model service returned HTTP ${service_status}." "$service_help" ;;
     esac
     # The quotes keep "ycrc-local" from matching only "ycrc-local-think".
-    if [[ "${service_reply%$'\n'*}" != *"\"${in_house_model}\""* ]]; then
-        die "the in-house model service doesn't offer ${in_house_model}." \
-            "The module's claude-in-house.conf may be out of date. $service_help"
+    if [[ "${service_reply%$'\n'*}" != *"\"${local_model}\""* ]]; then
+        die "the local model service doesn't offer ${local_model}." \
+            "The module's claude-local-model.conf may be out of date. $service_help"
     fi
-    add_in_house_claude_opts
+    add_local_claude_opts
 fi
 
 # --- Launch -------------------------------------------------------------------
@@ -399,11 +400,11 @@ fi
 # Argument groups, in order:
 #   gpu_opts         GPU support (--nv or nothing)
 #   path_opts        Container PATH (--env PREPEND_PATH=... or nothing)
-#   env_opts         in-house session environment (--env ... or nothing)
+#   env_opts         local session environment (--env ... or nothing)
 #   bind_opts        admin binds, the work dir, Claude state and user binds,
 #                    parent-first
 #   image            the image's runscript runs /usr/bin/claude ...
-#   mode_claude_opts ... with in-house --settings and --append-system-prompt,
+#   mode_claude_opts ... with local-mode --settings and --append-system-prompt,
 #   add_dir_opts     ... --add-dir=DIR for each user bind (the "=" form, since
 #                    --add-dir takes several values and would swallow the prompt),
 #   claude_args      ... and every argument meant for Claude
