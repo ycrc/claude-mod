@@ -928,11 +928,33 @@ async def proxy(request: web.Request):
     out = web.StreamResponse(status=upstream.status, headers=resp_hdrs)
     # Disable aiohttp's own buffering so SSE reaches the client token by token.
     out.enable_chunked_encoding()
-    await out.prepare(request)
 
     found = {}
     carry = ""
     streamed = False
+
+    def account_abort():
+        # Client hung up: record what was seen. The elapsed time is not a
+        # completed response, so report TTFT (if it happened) but no duration.
+        if accountable:
+            p, c = totals(found)
+            record_later(netid, agent, model, p, c, upstream.status, streamed,
+                         ttft=ttft)
+            if unattrib:
+                note_unattributed(unattrib[0], unattrib[1], path, model, unattrib[2], p, c)
+
+    # A client that disconnects is not a gateway error. Letting the
+    # ConnectionError escape the handler makes aiohttp log a full traceback
+    # ("Cannot write to closing transport"); returning instead lets aiohttp
+    # treat the dead connection as an ordinary disconnect when it finishes
+    # the response.
+    try:
+        await out.prepare(request)
+    except ConnectionError:
+        upstream.release()
+        account_abort()
+        return out
+
     try:
         async for chunk in upstream.content.iter_any():
             # Forward first: accounting must never delay a token.
@@ -948,18 +970,13 @@ async def proxy(request: web.Request):
                 carry = text[-SCAN_CARRY:]
             except Exception:
                 carry = ""
-    except (asyncio.CancelledError, ConnectionResetError):
-        # Client hung up mid-generation. Record what we saw and re-raise so
-        # aiohttp can clean up the connection properly.
-        if accountable:
-            p, c = totals(found)
-            # Client aborted: the elapsed time is not a completed response, so
-            # report TTFT (which did happen) but no duration.
-            record_later(netid, agent, model, p, c, upstream.status, streamed,
-                         ttft=ttft)
-            if unattrib:
-                note_unattributed(unattrib[0], unattrib[1], path, model, unattrib[2], p, c)
+    except asyncio.CancelledError:
+        account_abort()
         raise
+    except ConnectionError:
+        # Client hung up mid-generation (see above).
+        account_abort()
+        return out
     except Exception as exc:
         log(f"stream error for {netid}/{agent} {path}: {exc!r}")
     finally:
