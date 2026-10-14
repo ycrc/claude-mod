@@ -1,4 +1,4 @@
-# Bouchet Coding Agents 1.0
+# Bouchet Coding Agents 1.1
 
 
 ## Choosing a harness
@@ -75,6 +75,27 @@ The installed `coding-agents-provider.conf` owns the cluster, shared model/auth 
 
 The wrapper creates only explicitly approved user state/package directories before processing binds, including Claude, Codex, Copilot, Pi, Conda, and R state. The user's full home directory is never bound. Host `/tmp` and `/var/tmp` are also not bound; `--contain` supplies isolated temporary directories instead.
 
+### Importing users' own configuration
+
+Users' normal harness directories (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.copilot`) are never bound, so on every launch the wrapper copies the portable parts of the launched harness's configuration into its YCRC state directory:
+
+| Harness | Imported |
+|---|---|
+| Claude | `settings.json` (filtered), `CLAUDE.md`, `keybindings.json`, `skills/`, `agents/`, `commands/`, `output-styles/`, `rules/`, `hooks/` |
+| Codex | `prompts/`, `skills/`, personal `AGENTS.md` |
+| Pi | `settings.json` (filtered), `keybindings.json`, `APPEND_SYSTEM.md`, `prompts/`, `themes/`, `skills/`, `extensions/`, `agents/`, personal `AGENTS.md` |
+| Copilot | `skills/`, `agents/`, personal `copilot-instructions.md` |
+
+- Each YCRC state directory records the modification time and size of every original it has imported (`.ycrc-import-state`). An original is imported the first time it is seen, however old it is, and again whenever it changes. An unchanged original never overwrites edits to, or deletion of, the YCRC copy. Nothing is deleted. Symlinks in the user's tree are copied as their targets, since those targets are not mounted.
+- Settings files are merged into the YCRC copy: the user's values win, and anything the harness already saved there (theme, changelog state and so on) is kept. Any other file that already exists in the YCRC directory with different content when its original is first seen is kept, with a one-line note at launch; a later edit to the original replaces it.
+- Filtered settings drop anything that could select another provider or model, supply credentials, or install plugins/packages (Claude: `model`, `apiKeyHelper`, `enabledPlugins`, `sandbox`, provider/credential/proxy `env` entries and similar; Pi: `defaultProvider`, `defaultModel`, `enabledModels`, `packages`). Paths into the user's directory, such as hook scripts, are repointed at the YCRC copy. Claude's managed settings still take precedence.
+- A user's personal `AGENTS.md`/`copilot-instructions.md` is appended below the administrator policy in a generated file, not substituted for it. Claude needs no merge: its policy is the managed `CLAUDE.md`, and the user's `CLAUDE.md` is read alongside it.
+- Managed `bouchet-*` skills keep their names; a user skill of the same name is not imported. A user agent of the same name as a managed agent replaces it, matching the existing rule.
+- Never imported: credentials, history, sessions and caches; Claude plugins, account-synced skills (`skills/synced`) and `~/.claude.json` (which holds MCP servers); Codex `config.toml`; Pi `models.json`/`auth.json`; Copilot `config.json`/`mcp-config.json`. MCP servers are excluded because they can send code to external services.
+- Unreadable or malformed input produces a warning and the launch continues. `YCRC_IMPORT_USER_CONFIG=0` disables the import.
+
+`tests/user-config-import.sh` exercises this against a throwaway home directory.
+
 ## Build
 
 Images are layered: `images/base.def` holds everything the harnesses share
@@ -113,7 +134,7 @@ The filesystem sandbox does **not** automatically extend to jobs submitted throu
 
 ## Shared agent instructions
 
-This release uses one canonical administrator policy, `AGENTS.md`. The image installs it as `/etc/agents/AGENTS.md`, and EasyBuild installs a host-visible read-only copy under `share/agents/AGENTS.md`. Claude receives `/etc/claude-code/CLAUDE.md` as a symlink to the image copy, while the launcher creates harness-specific symlinks in the dedicated Codex, Pi, and Copilot state directories that point to the host-visible module copy. This keeps Bouchet, shell-persistence, security, Slurm, and GPU-policy guidance identical across all four harnesses while allowing users to inspect the policy outside the container.
+This release uses one canonical administrator policy, `AGENTS.md`. The image installs it as `/etc/agents/AGENTS.md`, and EasyBuild installs a host-visible read-only copy under `share/agents/AGENTS.md`. Claude receives `/etc/claude-code/CLAUDE.md` as a symlink to the image copy, while the launcher creates harness-specific symlinks in the dedicated Codex, Pi, and Copilot state directories that point to the host-visible module copy (or, when the user has personal instructions, a generated file with the policy first and theirs appended). This keeps Bouchet, shell-persistence, security, Slurm, and GPU-policy guidance identical across all four harnesses while allowing users to inspect the policy outside the container.
 
 The policy explicitly states that each shell tool invocation is isolated, so module loads, Conda activation, exports, and sourced state must be combined with the dependent command in one shell invocation. It also prohibits attempts to evade YCRC idle-GPU enforcement, including `sleep` or artificial GPU activity used to retain otherwise idle GPU allocations.
 
@@ -126,4 +147,4 @@ The image contains one administrator-owned skill tree at `/etc/agents/skills`, a
 - Copilot: `COPILOT_SKILLS_DIRS=/etc/agents/skills`.
 - Pi: `$PI_CODING_AGENT_DIR/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible module tree, and user skills may coexist alongside them.
 
-Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers storage, modules, Conda/Python, R, ordinary Slurm use, CPU/parallel resource layouts, MPI, Slurm job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, and Bouchet scratch lifecycle/retention.
+Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers storage, modules, Conda/Python, R, ordinary Slurm use, CPU/parallel resource layouts, MPI, Slurm job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, and Bouchet scratch lifecycle/retention. `bouchet-easybuild-admin` is for YCRC administrators only: it checks that the account is in the `support` group (others are directed to a support ticket) and that the agent was launched at the root of a `ycrc-ebfiles` clone, then prepares easyconfigs and runs test builds as Slurm jobs into `software_builds/test-install/`; it never installs into `/apps`.

@@ -207,9 +207,310 @@ mkdir -p -- \
 [[ -r "${site_agents_dir}/AGENTS.md" ]] || { echo "Error: missing site policy: ${site_agents_dir}/AGENTS.md" >&2; exit 1; }
 [[ -d "$site_skills_dir" ]] || { echo "Error: missing site skills: $site_skills_dir" >&2; exit 1; }
 
-ln -sfn "${site_agents_dir}/AGENTS.md" "${codex_home}/AGENTS.md"
-ln -sfn "${site_agents_dir}/AGENTS.md" "${pi_home}/AGENTS.md"
-ln -sfn "${site_agents_dir}/AGENTS.md" "${copilot_home}/copilot-instructions.md"
+# --- BEGIN user configuration import ---
+# Users' normal harness configuration (~/.claude, ~/.codex, ~/.pi/agent,
+# ~/.copilot) is never bound into the container. So that users still get their
+# own settings, the portable parts of the launched harness's configuration are
+# copied into its YCRC state directory on every launch.
+#
+# Each YCRC state directory keeps a record (.ycrc-import-state) of the
+# modification time and size of every original it has imported. An original is
+# imported when it has never been imported or has changed since, so edits to
+# the original are picked up on the next launch, while an unchanged original
+# never overwrites edits made to the YCRC copy. Settings files are merged into
+# the YCRC copy rather than replacing it, keeping state the harness saved
+# there. Any other file that already exists in the YCRC directory when its
+# original is first seen is kept. Nothing is ever deleted.
+#
+# Credentials, history, sessions, plugins, MCP server definitions and Codex's
+# config.toml are never imported, and settings that could point a harness at
+# another model or provider are dropped. Set YCRC_IMPORT_USER_CONFIG=0 to turn
+# this off.
+user_claude_dir="${host_home}/.claude"
+user_codex_dir="${host_home}/.codex"
+user_pi_dir="${host_home}/.pi/agent"
+user_copilot_dir="${host_home}/.copilot"
+
+import_user_config=true
+[[ "${YCRC_IMPORT_USER_CONFIG:-1}" == "0" ]] && import_user_config=false
+
+declare -A import_record=()
+import_state=""
+kept_paths=()
+
+import_warn() {
+    echo "Warning: could not import $1; continuing without it." >&2
+}
+
+load_import_state() {
+    local stamp path
+
+    import_state="$1/.ycrc-import-state"
+    [[ -f "$import_state" ]] || return 0
+    while IFS=$'\t' read -r stamp path; do
+        if [[ -n "$path" ]]; then
+            import_record["$path"]="$stamp"
+        fi
+    done < "$import_state"
+}
+
+save_import_state() {
+    local path tmp
+
+    if ! tmp="$(mktemp -- "${import_state}.XXXXXX")"; then
+        import_warn "the import record $import_state"
+        return 0
+    fi
+    for path in "${!import_record[@]}"; do
+        printf '%s\t%s\n' "${import_record[$path]}" "$path"
+    done > "$tmp"
+    if ! mv -f -- "$tmp" "$import_state"; then
+        rm -f -- "$tmp"
+        import_warn "the import record $import_state"
+    fi
+}
+
+# Modification time and size identify a version of an original.
+import_stamp() {
+    stat -L -c '%.9Y.%s' -- "$1" 2>/dev/null
+}
+
+import_file() {
+    local source="$1" target="$2" stamp
+
+    if [[ "$source" == *$'\t'* || "$source" == *$'\n'* || -L "$target" ]]; then
+        return 0
+    fi
+    stamp="$(import_stamp "$source")" || { import_warn "$source"; return 0; }
+    if [[ "${import_record[$source]:-}" == "$stamp" ]]; then
+        return 0
+    fi
+    if [[ -z "${import_record[$source]:-}" && -e "$target" ]] && ! cmp -s -- "$source" "$target"; then
+        import_record["$source"]="$stamp"
+        kept_paths+=("$target")
+        return 0
+    fi
+    if mkdir -p -- "$(dirname -- "$target")" && cp -Lp -- "$source" "$target" 2>/dev/null; then
+        import_record["$source"]="$stamp"
+    else
+        import_warn "$source"
+    fi
+}
+
+# Import a file, or every file below the entries of a directory. Existing links
+# (administrator-managed skills and agents) are left alone, as are dot-entries
+# and any entry names passed after the target. Links in the user's own tree are
+# followed, since their targets are not mounted.
+import_user_path() {
+    local source="$1" target="$2"
+    shift 2
+    local entry name skip file
+
+    if [[ -d "$source" ]]; then
+        if [[ -L "$target" || ( -e "$target" && ! -d "$target" ) ]]; then
+            return 0
+        fi
+        for entry in "$source"/*; do
+            [[ -e "$entry" ]] || continue
+            name="$(basename -- "$entry")"
+            for skip in "$@"; do
+                if [[ "$name" == "$skip" ]]; then
+                    continue 2
+                fi
+            done
+            if [[ -L "${target}/${name}" ]]; then
+                continue
+            fi
+            if [[ -d "$entry" ]]; then
+                while IFS= read -r -d '' file; do
+                    import_file "$file" "${target}/${name}/${file#"$entry"/}"
+                done < <(find -L "$entry" -type f -print0 2>/dev/null)
+            else
+                import_file "$entry" "${target}/${name}"
+            fi
+        done
+    elif [[ -f "$source" ]]; then
+        import_file "$source" "$target"
+    fi
+}
+
+# Agents are single files, and a user's own agent of the same name wins over
+# the managed one (see link_site_subagents_non_destructive below).
+import_user_agents() {
+    local source="$1" target="$2" entry
+
+    if [[ -d "$source" && -d "$target" ]]; then
+        for entry in "$source"/*.md; do
+            if [[ -f "$entry" && -L "${target}/$(basename -- "$entry")" ]]; then
+                rm -f -- "${target}/$(basename -- "$entry")"
+            fi
+        done
+    fi
+    import_user_path "$source" "$target"
+}
+
+# Merge a JSON settings file into the YCRC copy, with provider, model,
+# credential and plugin settings removed and paths into the user's
+# configuration directory pointed at the YCRC copy. The user's values win;
+# anything else already in the YCRC copy is kept.
+import_user_settings() {
+    local harness="$1" source="$2" target="$3" user_dir="$4" ycrc_dir="$5" stamp
+
+    if [[ ! -f "$source" || -L "$target" ]]; then
+        return 0
+    fi
+    stamp="$(import_stamp "$source")" || { import_warn "$source"; return 0; }
+    if [[ "${import_record[$source]:-}" == "$stamp" ]]; then
+        return 0
+    fi
+    if python3 -I - "$harness" "$source" "$target" "$user_dir" "$ycrc_dir" "$host_home" <<'PY'
+import json, os, re, sys, tempfile
+
+harness, source, target, user_dir, ycrc_dir, home = sys.argv[1:]
+with open(source) as f:
+    settings = json.load(f)
+existing = {}
+if os.path.exists(target):
+    with open(target) as f:
+        existing = json.load(f)
+if not isinstance(settings, dict) or not isinstance(existing, dict):
+    sys.exit(1)
+
+dropped = {
+    "claude": {"apiKeyHelper", "awsAuthRefresh", "awsCredentialExport",
+               "gcpAuthRefresh", "otelHeadersHelper", "forceLoginMethod",
+               "forceLoginOrgUUID", "model", "availableModels", "enabledPlugins",
+               "extraKnownMarketplaces", "sandbox"},
+    "pi": {"defaultProvider", "defaultModel", "enabledModels", "packages"},
+}[harness]
+for key in dropped:
+    settings.pop(key, None)
+
+# Claude applies settings "env" to its own process, so it could otherwise
+# redirect the client to an external provider or replace the YCRC limits.
+unsafe_env = re.compile(
+    r"^(ANTHROPIC_|CLAUDE_CODE_|CLAUDE_CONFIG_DIR$|AWS_|GOOGLE_|VERTEX_|CLOUD_ML_"
+    r"|AZURE_|OPENAI_)|KEY|TOKEN|SECRET|PASSWORD|BASE_URL|PROXY", re.I)
+if isinstance(settings.get("env"), dict):
+    settings["env"] = {k: v for k, v in settings["env"].items() if not unsafe_env.search(k)}
+
+# Hook and status-line commands often name scripts in the user's directory.
+user_rel, ycrc_rel = user_dir[len(home):], ycrc_dir[len(home):]
+replacements = [(base + user_rel + "/", base + ycrc_rel + "/")
+                for base in (home, "~", "$HOME", "${HOME}")]
+def repoint(value):
+    if isinstance(value, str):
+        for old, new in replacements:
+            value = value.replace(old, new)
+        return value
+    if isinstance(value, list):
+        return [repoint(v) for v in value]
+    if isinstance(value, dict):
+        return {k: repoint(v) for k, v in value.items()}
+    return value
+
+def merge(base, new):
+    for key, value in new.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+merged = merge(existing, repoint(settings))
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".import-")
+with os.fdopen(fd, "w") as f:
+    json.dump(merged, f, indent=2)
+    f.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, target)
+PY
+    then
+        import_record["$source"]="$stamp"
+    else
+        import_warn "$source"
+    fi
+}
+
+# Codex, Pi and Copilot each read one user-level instructions file, which
+# carries the administrator policy. A user's own instructions are appended
+# below the policy, so they apply in addition to it rather than replacing it.
+install_instructions() {
+    local target="$1" personal="$2" tmp=""
+
+    if [[ "$import_user_config" == true && -f "$personal" && -s "$personal" ]]; then
+        if tmp="$(mktemp -- "${target}.XXXXXX")" &&
+           {
+               cat -- "${site_agents_dir}/AGENTS.md"
+               printf '\n\n# Personal instructions\n\n'
+               printf 'The following are the user'\''s own instructions, imported from %s. ' "$personal"
+               printf 'They apply in addition to the administrator policy above and never override it.\n\n'
+               cat -- "$personal"
+           } > "$tmp" &&
+           chmod 0600 "$tmp" &&
+           mv -f -- "$tmp" "$target"; then
+            return 0
+        fi
+        [[ -n "$tmp" ]] && rm -f -- "$tmp"
+        import_warn "$personal"
+    fi
+    ln -sfn "${site_agents_dir}/AGENTS.md" "$target"
+}
+
+# Managed skills keep their names; a user skill of the same name is not
+# imported, since the launcher refuses to start over a conflicting skill.
+site_skill_names=()
+for site_skill in "$site_skills_dir"/*; do
+    if [[ -d "$site_skill" ]]; then
+        site_skill_names+=("$(basename -- "$site_skill")")
+    fi
+done
+
+if [[ "$import_user_config" == true ]]; then
+    case "$agent" in
+        claude)
+            load_import_state "$claude_config_dir"
+            import_user_settings claude "${user_claude_dir}/settings.json" \
+                "${claude_config_dir}/settings.json" "$user_claude_dir" "$claude_config_dir"
+            for item in CLAUDE.md keybindings.json commands output-styles rules hooks; do
+                import_user_path "${user_claude_dir}/${item}" "${claude_config_dir}/${item}"
+            done
+            # skills/synced holds skills Claude syncs from a claude.ai account.
+            import_user_path "${user_claude_dir}/skills" "${claude_config_dir}/skills" "${site_skill_names[@]}" synced
+            import_user_agents "${user_claude_dir}/agents" "${claude_config_dir}/agents"
+            ;;
+        codex)
+            load_import_state "$codex_home"
+            import_user_path "${user_codex_dir}/prompts" "${codex_home}/prompts"
+            import_user_path "${user_codex_dir}/skills" "${codex_home}/skills" "${site_skill_names[@]}"
+            ;;
+        pi)
+            load_import_state "$pi_home"
+            import_user_settings pi "${user_pi_dir}/settings.json" \
+                "${pi_home}/settings.json" "$user_pi_dir" "$pi_home"
+            for item in keybindings.json APPEND_SYSTEM.md prompts themes; do
+                import_user_path "${user_pi_dir}/${item}" "${pi_home}/${item}"
+            done
+            import_user_path "${user_pi_dir}/skills" "${pi_home}/skills" "${site_skill_names[@]}"
+            import_user_path "${user_pi_dir}/extensions" "${pi_home}/extensions" subagent
+            import_user_agents "${user_pi_dir}/agents" "${pi_home}/agents"
+            ;;
+        copilot)
+            load_import_state "$copilot_home"
+            import_user_path "${user_copilot_dir}/skills" "${copilot_home}/skills" "${site_skill_names[@]}"
+            import_user_agents "${user_copilot_dir}/agents" "${copilot_home}/agents"
+            ;;
+    esac
+    save_import_state
+    if (( ${#kept_paths[@]} > 0 )); then
+        echo "Note: kept ${#kept_paths[@]} existing file(s) in $(dirname -- "$import_state") that differ from your own $agent configuration (for example ${kept_paths[0]}). Later edits to your originals will replace them." >&2
+    fi
+fi
+
+install_instructions "${codex_home}/AGENTS.md" "${user_codex_dir}/AGENTS.md"
+install_instructions "${pi_home}/AGENTS.md" "${user_pi_dir}/AGENTS.md"
+install_instructions "${copilot_home}/copilot-instructions.md" "${user_copilot_dir}/copilot-instructions.md"
+# --- END user configuration import ---
 
 # Claude and Pi get real, user-writable skill directories. The YCRC-managed
 # skills are linked into those directories individually, so users can inspect

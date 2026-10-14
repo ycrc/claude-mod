@@ -27,7 +27,7 @@ sources = [
 ]
 checksums = [
     {'coding-agents-pi.sif': '4f340aab4c682aa9a4051834f32064746576c59f21aa8840595900ba89bdc6ab'},
-    {'coding-agents-wrapper.sh': 'c5a28371115c5a797133aebaf4ece530508a13d210833ea22fb42577ec2192de'},
+    {'coding-agents-wrapper.sh': '85bb3dd94f9696e3b051532a768f0cb9353549c2a564197d68ce43ee9b43baf0'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
