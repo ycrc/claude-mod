@@ -44,6 +44,7 @@ import collections
 import json
 import os
 import pwd
+import socket
 import re
 import sys
 import time
@@ -187,6 +188,27 @@ IDENTITY_MESSAGE = os.environ.get("PROXY_IDENTITY_MESSAGE") or (
     "copilot, pi) or for Claude Enterprise, use module load claude. "
     "Questions: research.computing@yale.edu")
 NETID_CACHE_TTL = 3600   # seconds to remember whether a netid exists
+
+# Node-ownership check. The "<netid>.<agent>" key is not a secret: any client
+# can name any netid. The module's launcher only runs inside the user's own
+# Slurm allocation (as do the Open OnDemand Open WebUI app and claude-mod), so
+# a genuine request comes from a node where that netid has a running job. This
+# check resolves the client address to its node and asks Slurm who has
+# running jobs there (cached NODE_CACHE_TTL seconds per node, refreshed on a
+# miss so a job that has just started is not flagged).
+#   off      no check (default)
+#   flag     serve, but summarise mismatches to NODE_CHECK_LOG
+#   enforce  refuse mismatches with HTTP 403
+# Any lookup failure (unresolvable address, squeue error or timeout) lets the
+# request through: the check must never lock out legitimate users. Requests
+# from IDENTITY_EXEMPT_ADDRS (the serving node itself) are not checked.
+NODE_CHECK = os.environ.get("PROXY_NODE_CHECK", "off").strip().lower()
+NODE_CHECK_LOG = os.environ.get(
+    "PROXY_NODE_CHECK_LOG", "/apps/services/coding-agents/state/node-check.jsonl")
+NODE_CACHE_TTL = float(os.environ.get("PROXY_NODE_CACHE_TTL", "60"))
+NODE_REFRESH_MIN = float(os.environ.get("PROXY_NODE_REFRESH_MIN", "10"))
+SQUEUE = os.environ.get("PROXY_SQUEUE", "squeue")
+NODE_CHECK_FLUSH = float(os.environ.get("PROXY_NODE_CHECK_FLUSH", "300"))
 
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
@@ -833,6 +855,121 @@ async def identity_refusal(request):
     return None
 
 
+_host_cache = {}      # client address -> short node name (or None)
+_node_users = {}      # node -> (set of netids with running jobs, monotonic fetch time)
+_node_flags = {}      # (netid, agent, node, user_agent, path, action) -> counters
+
+
+async def client_node(addr):
+    """Short hostname of a client address; None if it cannot be resolved."""
+    if addr in _host_cache:
+        return _host_cache[addr]
+    try:
+        name = (await asyncio.get_running_loop().run_in_executor(
+            None, socket.gethostbyaddr, addr))[0]
+        node = name.split(".")[0]
+    except Exception:
+        node = None
+    if len(_host_cache) > 20000:
+        _host_cache.clear()
+    _host_cache[addr] = node
+    return node
+
+
+async def node_job_users(node, max_age):
+    """Netids with running jobs on node, at most max_age seconds old; None on failure."""
+    hit = _node_users.get(node)
+    now = time.monotonic()
+    if hit and now - hit[1] < max_age:
+        return hit[0]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            SQUEUE, "-h", "-t", "R", "-w", node, "-o", "%u",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await asyncio.wait_for(proc.communicate(), 10)
+        if proc.returncode != 0:
+            return None
+    except Exception:
+        return None
+    users = set(out.decode(errors="ignore").split())
+    if len(_node_users) > 5000:
+        _node_users.clear()
+    _node_users[node] = (users, now)
+    return users
+
+
+async def node_mismatch(request, netid):
+    """The client's node if netid has no running job there, else None."""
+    if NODE_CHECK not in ("flag", "enforce") or request.remote in IDENTITY_EXEMPT_ADDRS:
+        return None
+    node = await client_node(request.remote)
+    if not node:
+        return None
+    users = await node_job_users(node, NODE_CACHE_TTL)
+    if users is None or netid in users:
+        return None
+    users = await node_job_users(node, NODE_REFRESH_MIN)   # a job may have just started
+    if users is None or netid in users:
+        return None
+    return node
+
+
+def note_node_flag(netid, agent, node, user_agent, path, action):
+    try:
+        ua = (user_agent or "-").replace("\n", " ").replace("\r", " ")[:200]
+        key = (netid, agent, node, ua, path, action)
+        rec = _node_flags.get(key)
+        if rec is None:
+            if len(_node_flags) >= UNATTRIBUTED_MAX_KEYS:
+                return
+            rec = _node_flags[key] = {"requests": 0, "first": time.time()}
+        rec["requests"] += 1
+        rec["last"] = time.time()
+    except Exception:
+        pass
+
+
+def flush_node_flags():
+    global _node_flags
+    if not _node_flags or not NODE_CHECK_LOG:
+        return
+    batch, _node_flags = _node_flags, {}
+    end = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    lines = []
+    for (netid, agent, node, ua, path, action), rec in batch.items():
+        lines.append(json.dumps({
+            "window_end": end, "netid": netid, "agent": agent, "node": node,
+            "user_agent": ua, "path": path, "action": action,
+            "requests": rec["requests"],
+            "first": datetime.fromtimestamp(rec["first"], timezone.utc).isoformat(timespec="seconds"),
+            "last": datetime.fromtimestamp(rec["last"], timezone.utc).isoformat(timespec="seconds"),
+        }))
+    try:
+        fd = os.open(NODE_CHECK_LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
+        with os.fdopen(fd, "a") as fh:
+            fh.write("\n".join(lines) + "\n")
+    except Exception as exc:
+        log(f"node-check log write failed: {exc!r}")
+
+
+async def node_flag_flusher():
+    while True:
+        await asyncio.sleep(NODE_CHECK_FLUSH)
+        flush_node_flags()
+
+
+def node_refusal_response(path, netid, node):
+    msg = (f"This request identifies as {netid}, but {netid} has no running Slurm "
+           f"job on {node}. Use module load local-coding-agents inside your own "
+           "Slurm allocation. Questions: research.computing@yale.edu")
+    if path.startswith("/v1/messages"):
+        payload = {"type": "error", "error": {"type": "permission_error", "message": msg}}
+    else:
+        payload = {"error": {"message": msg, "type": "permission_error",
+                             "code": "node_mismatch"}}
+    return web.json_response(payload, status=403)
+
+
 def identity_response(path):
     if path.startswith("/v1/messages"):
         payload = {"type": "error",
@@ -852,6 +989,19 @@ async def handle(request: web.Request):
         note_unattributed(request.remote, request.headers.get("User-Agent"),
                           request.rel_url.path, None, f"{reason}-refused", 0, 0)
         return identity_response(request.rel_url.path)
+    if NODE_CHECK in ("flag", "enforce") and request.rel_url.path.startswith("/v1/"):
+        try:
+            netid, agent = parse_identity(request.headers)
+            if netid != "unattributed":
+                node = await node_mismatch(request, netid)
+                if node:
+                    action = "refused" if NODE_CHECK == "enforce" else "flagged"
+                    note_node_flag(netid, agent, node, request.headers.get("User-Agent"),
+                                   request.rel_url.path, action)
+                    if NODE_CHECK == "enforce":
+                        return node_refusal_response(request.rel_url.path, netid, node)
+        except Exception:
+            pass       # the check must never break legitimate traffic
     key = None
     if request.method == "POST" and request.rel_url.path.startswith("/v1/"):
         try:
@@ -1006,6 +1156,10 @@ async def on_startup(app):
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
     log(f"identity enforcement: {'ON' if REQUIRE_IDENTITY else 'off'}"
         + (f", exempt {sorted(IDENTITY_EXEMPT_ADDRS)}" if REQUIRE_IDENTITY else ""))
+    log(f"node-ownership check: {NODE_CHECK}"
+        + (f" -> {NODE_CHECK_LOG}" if NODE_CHECK in ("flag", "enforce") else ""))
+    if NODE_CHECK in ("flag", "enforce"):
+        app["node_flag_flusher"] = asyncio.create_task(node_flag_flusher())
     if MODEL_ALIAS:
         app["served_model_watcher"] = asyncio.create_task(served_model_watcher())
     if USER_MAX_INFLIGHT > 0:
@@ -1021,6 +1175,7 @@ async def on_startup(app):
 
 async def on_cleanup(app):
     flush_unattributed()
+    flush_node_flags()
     if _session:
         await _session.close()
 
