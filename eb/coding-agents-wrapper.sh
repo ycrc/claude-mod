@@ -223,9 +223,60 @@ cluster_name="$YCRC_CLUSTER"
 # Reasoning produces noticeably more output and a slower first token, so it is
 # off unless the user asks for it AND the administrator has configured a
 # suffix. Clearing YCRC_AGENT_THINK_SUFFIX disables the feature entirely.
-agent_model="$YCRC_AGENT_MODEL"
+# Credential presented to the inference endpoint.
+#
+# With user-scoped auth enabled, the launcher sends "<netid>.<agent>" instead
+# of the shared site credential. The gateway in front of vLLM splits that to
+# attribute token usage to a netid, then substitutes the real upstream
+# credential before forwarding. vLLM itself never sees this value.
+#
+# This REQUIRES the gateway to be deployed: vLLM rejects anything but its own
+# API key, so enabling it while talking to vLLM directly would break every
+# harness. It is therefore off unless coding-agents-provider.conf turns it on.
+if [[ "${YCRC_AGENT_USER_SCOPED_AUTH:-0}" == "1" ]]; then
+    agent_auth="${user_name}.${agent}"
+else
+    agent_auth="${YCRC_AGENT_AUTH}"
+fi
+
+# --- BEGIN model name ---
+# Request the served model by its real name, so every harness shows it (for
+# example Qwen3.8-Flash-Next) rather than the gateway alias. The name is
+# looked up at each launch from the gateway's /v1/models, where the alias is
+# listed with the same backing model ("root") as the real entry, so swapping
+# the served model still needs no module change. If the lookup fails, the
+# session uses the alias, which the gateway resolves itself.
+#
+# A session keeps the name it started with: after a model swap, it must be
+# restarted. The managed subagents keep requesting the alias, which they never
+# display.
+base_model="$YCRC_AGENT_MODEL"
+if models_json="$(curl -sS --connect-timeout 2 -m 4 \
+        -H "Authorization: Bearer ${agent_auth}" \
+        "${YCRC_COPILOT_BASE_URL%/}/models" 2>/dev/null)"; then
+    served_model="$(python3 -I -c '
+import json, re, sys
+alias, suffix = sys.argv[1], sys.argv[2]
+models = [m for m in json.load(sys.stdin).get("data", [])
+          if isinstance(m, dict) and isinstance(m.get("id"), str)]
+roots = {m.get("root") for m in models if m["id"] == alias}
+for m in models:
+    name = m["id"]
+    if (name != alias and m.get("root") in roots
+            and not (suffix and name.endswith(suffix))
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}", name)):
+        print(name)
+        break
+' "$YCRC_AGENT_MODEL" "${YCRC_AGENT_THINK_SUFFIX:-}" <<< "$models_json" 2>/dev/null || true)"
+    if [[ -n "$served_model" ]]; then
+        base_model="$served_model"
+    fi
+fi
+# --- END model name ---
+
+agent_model="$base_model"
 if [[ "${YCRC_THINKING:-0}" == "1" && -n "${YCRC_AGENT_THINK_SUFFIX:-}" ]]; then
-    agent_model="${YCRC_AGENT_MODEL}${YCRC_AGENT_THINK_SUFFIX}"
+    agent_model="${base_model}${YCRC_AGENT_THINK_SUFFIX}"
     printf 'Extended reasoning enabled for this session (model: %s).\n' "$agent_model"
 fi
 
@@ -1373,22 +1424,6 @@ if [[ -n "$client_ssh_auth_sock" ]]; then
     client_env_opts+=(--env "SSH_AUTH_SOCK=${client_ssh_auth_sock}")
 fi
 
-# Credential presented to the inference endpoint.
-#
-# With user-scoped auth enabled, the launcher sends "<netid>.<agent>" instead
-# of the shared site credential. The gateway in front of vLLM splits that to
-# attribute token usage to a netid, then substitutes the real upstream
-# credential before forwarding. vLLM itself never sees this value.
-#
-# This REQUIRES the gateway to be deployed: vLLM rejects anything but its own
-# API key, so enabling it while talking to vLLM directly would break every
-# harness. It is therefore off unless coding-agents-provider.conf turns it on.
-if [[ "${YCRC_AGENT_USER_SCOPED_AUTH:-0}" == "1" ]]; then
-    agent_auth="${user_name}.${agent}"
-else
-    agent_auth="${YCRC_AGENT_AUTH}"
-fi
-
 case "$agent" in
     claude)
         client_bin=claude
@@ -1400,7 +1435,7 @@ case "$agent" in
             --env "CLAUDE_CONFIG_DIR=${claude_config_dir}"
             --env "ANTHROPIC_BASE_URL=${YCRC_CLAUDE_BASE_URL}"
             --env "ANTHROPIC_MODEL=${agent_model}"
-            --env "ANTHROPIC_SMALL_FAST_MODEL=${YCRC_AGENT_MODEL}"
+            --env "ANTHROPIC_SMALL_FAST_MODEL=${base_model}"
             --env "ANTHROPIC_AUTH_TOKEN=${agent_auth}"
             --env "CLAUDE_CODE_EFFORT_LEVEL=${YCRC_CLAUDE_EFFORT:-xhigh}"
             --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_CONTEXT}"
@@ -1423,7 +1458,45 @@ case "$agent" in
     pi)
         client_bin=pi
         [[ -r "$pi_models_config" ]] || { echo "Error: missing Pi models config: $pi_models_config" >&2; exit 1; }
-        bind_opts+=(--bind "${pi_models_config}:${pi_home}/models.json:ro")
+        # Pi accepts only models listed in models.json. When the session uses
+        # the served model's real name, mount a copy of the managed file that
+        # also lists it (and its reasoning variant) with the alias entries'
+        # settings. The copy lives in a launcher directory that is not bound
+        # into the container, so like the managed file it is read-only there;
+        # it is replaced atomically at each launch, which leaves running
+        # sessions on the version they started with.
+        pi_models_source="$pi_models_config"
+        launcher_cache_dir="${host_home}/.cache/ycrc-launcher"
+        pi_models_copy="${launcher_cache_dir}/pi-models.json"
+        pi_models_tmp=""
+        if [[ "$base_model" != "$YCRC_AGENT_MODEL" ]] &&
+           mkdir -p -m 0700 -- "$launcher_cache_dir" &&
+           pi_models_tmp="$(mktemp "${launcher_cache_dir}/pi-models.XXXXXX")" &&
+           python3 -I - "$pi_models_config" "$pi_models_tmp" "$YCRC_AGENT_MODEL" "$base_model" "${YCRC_AGENT_THINK_SUFFIX:-}" <<'PY'
+import json, sys
+source, target, alias, real, suffix = sys.argv[1:]
+config = json.load(open(source))
+for provider in config.get("providers", {}).values():
+    models = provider.get("models", [])
+    known = {m.get("id") for m in models}
+    for entry in list(models):
+        for old, new in ((alias, real), (alias + suffix, real + suffix) if suffix else (None, None)):
+            if old and entry.get("id") == old and new not in known:
+                models.append(dict(entry, id=new))
+                known.add(new)
+with open(target, "w") as f:
+    json.dump(config, f, indent=2)
+PY
+        then
+            chmod 0644 "$pi_models_tmp"
+            if mv -f -- "$pi_models_tmp" "$pi_models_copy"; then
+                pi_models_source="$pi_models_copy"
+            fi
+        fi
+        if [[ -n "$pi_models_tmp" ]]; then
+            rm -f -- "$pi_models_tmp"
+        fi
+        bind_opts+=(--bind "${pi_models_source}:${pi_home}/models.json:ro")
         client_env_opts+=(
             --env "PI_CODING_AGENT_DIR=${pi_home}"
             --env "PI_OFFLINE=true"

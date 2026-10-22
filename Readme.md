@@ -62,12 +62,14 @@ Claude additionally retains its managed-settings policy inside the image. Codex,
 
 ## Local model
 
-The harnesses request the model as `ycrc-local` (and `ycrc-local-think` for extended reasoning). The inference gateway rewrites that alias to whatever model vLLM is serving, so swapping the model needs no module rebuild; usage metrics are still recorded under the real model name. Only the context and output limits in `coding-agents-provider.conf`, `codex-config.toml` and `pi-models.json` are model-specific.
+The configuration names the model only by the gateway alias `ycrc-local` (`ycrc-local-think` for extended reasoning), which the gateway rewrites to whatever model vLLM is serving. At each launch the wrapper asks the gateway's `/v1/models` which real model the alias points to (the entry with the same backing model) and has the harness request that name, for example `Qwen3.8-Flash-Next` (or `Qwen3.8-Flash-Next-think`), so every harness displays the real model. The gateway passes real names through and strips the reasoning suffix from any model. If the lookup fails, the session uses the alias. For Pi, the wrapper mounts a copy of `pi-models.json` that also lists the real name, kept at `~/.cache/ycrc-launcher/pi-models.json` (outside the container's binds, so read-only to the session, and replaced atomically at each launch); the managed subagents keep requesting the alias.
+
+Swapping the served model therefore still needs no module rebuild: the next launch picks up the new name. A session started before a swap keeps requesting the old name and must be restarted. Usage metrics are recorded under the real model name. Only the context and output limits in `coding-agents-provider.conf`, `codex-config.toml` and `pi-models.json` are model-specific.
 
 - Claude: Anthropic-compatible endpoint.
 - Codex: OpenAI Responses API via the read-only `codex-config.toml` source.
 - Copilot: OpenAI-compatible local provider with `COPILOT_OFFLINE=true` to suppress Copilot's own automatic external-provider/startup activity; this does not disable Bouchet network access.
-- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model ycrc-local`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access.
+- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model <served model>`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access.
 
 The installed `coding-agents-provider.conf` owns the cluster, shared model/auth values, and Claude/Copilot endpoint values; the wrapper sources it after scrubbing inherited credentials. Codex's base URL remains in the administrator-owned `codex-config.toml`, while Pi's base URL remains in the administrator-owned `pi-models.json`; update those files together if the inference endpoint changes.
 
@@ -156,6 +158,7 @@ launcher reads its configuration only from its own install directory.
 | `tests/skills-static.sh` | nothing | skill files well formed and listed in `AGENTS.md`; no `module purge`/`unload` or `agent`-partition examples; packaged tarball matches the source |
 | `tests/user-binds.sh` | nothing | `--bind` parsing and checks; group shared directories |
 | `tests/user-config-import.sh` | nothing | importing users' own harness configuration |
+| `tests/model-name.sh` | nothing | looking up the served model's real name from the gateway, and falling back to the alias |
 | `tests/module-e2e.sh` | a Slurm allocation | live sessions of all four harnesses against an install (`MODULE_ROOT`, default the test install): module layout, launch restrictions, tool use, credential isolation, `--bind`, group shared directories, StdEnv, the renv cache, and policy precedence over a conflicting project instruction file |
 
 The precedence check in `module-e2e.sh` tests model behavior, so a failure there can be flaky; read the generated `run.sh` before concluding. Each harness reads the policy and skills through links into its module's `share/agents`, which resolve inside the container only under `/apps`. For a test install elsewhere, `module-e2e.sh` adds `--bind <install>/software` to every launch; without it those links dangle and the agents run with no YCRC policy. Do the same when testing a non-`/apps` install by hand.

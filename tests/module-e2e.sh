@@ -69,6 +69,14 @@ for h in claude codex copilot pi; do
     check "$h planted credentials absent"    '[[ -s env.txt ]] && ! grep -qxE "OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|PLANTED" env.txt'
     check "$h used its own image"            'grep -q "^image=.*/coding-agents-$h.sif$" env.txt'
 done
+echo "== sessions request the served model by its real name"
+served="$(curl -sS -m 5 -H "Authorization: Bearer ${USER}.pi" "$(sed -n "s/^YCRC_COPILOT_BASE_URL='\(.*\)'$/\1/p" "$T/software/pi-local/1.1/coding-agents-provider.conf")/models" |
+    python3 -c 'import json,sys; print(next(m["id"] for m in json.load(sys.stdin)["data"] if m["id"]!="ycrc-local" and not m["id"].endswith("-think")))')"
+echo "   served model: $served"
+check "codex config names the served model"  'grep -qx "model = \"$served\"" "$HOME/.codex-ycrc/config.toml"'
+check "pi model list includes the served model" 'grep -q "\"id\": \"$served\"" "$HOME/.cache/ycrc-launcher/pi-models.json"'
+check "pi session used the served model"       'grep -q "\"modelId\":\"$served\"" "$(ls -t "$HOME"/.pi-ycrc/sessions/*/*.jsonl | head -1)"'
+
 echo "== extended reasoning through the alias"
 W="$E/think"; mkdir -p "$W"; cd "$W"
 out="$(YCRC_THINKING=1 timeout 600 claude "${xb[@]}" -p "Reply with only the word OK." --dangerously-skip-permissions 2>&1)"; rc=$?
