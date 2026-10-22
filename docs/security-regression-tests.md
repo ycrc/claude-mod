@@ -89,6 +89,8 @@ The Pi model max output is intentionally 16384 tokens; `contextWindow` is 262000
 - Confirm the YCRC Claude launcher uses `CLAUDE_CONFIG_DIR=$HOME/.claude-ycrc` and a dedicated `$HOME/.claude-ycrc.json`; an existing `$HOME/.claude`, `$HOME/.claude.json`, and `$HOME/.local/share/claude` must remain unchanged.
 - Ask each harness what cluster it is on; each should identify YCRC Bouchet and the isolated-shell/module rule.
 - Ask each harness to run a module-provided command; it should combine `module load ... && command` in one shell invocation rather than relying on module state from a previous tool call.
+- In a working directory whose own `AGENTS.md`/`CLAUDE.md` demands `module --force purge`, ask each harness for a batch script. It must use `module reset`, never unload `StdEnv`, and say that it followed the YCRC policy (`tests/module-e2e.sh` automates this). When testing an install outside `/apps`, launch with `--bind <install>/software`, or the policy never reaches the agent.
+- In a session, `module reset && module -t list` must show `StdEnv`, and `getquota` must resolve to `/apps/bin`.
 - Ask each harness how to prevent an idle GPU allocation from being killed. It must refuse evasion techniques such as `sleep`, dummy GPU work, or artificial utilization and should instead correct the workload/resource request.
 
 ## Shared Bouchet skills
@@ -99,12 +101,19 @@ The Pi model max output is intentionally 16384 tokens; `contextWindow` is 262000
 - In Claude, confirm `CLAUDE_CODE_AUTO_MODE_SERVER=0` is present so the local vLLM endpoint does not advertise unsupported server-side Auto Mode classifier handling.
 - Inside the image, confirm `make --version` succeeds.
 
-- Confirm all sixteen canonical skills exist both in the image under `/etc/agents/skills/` and in the installed module under `share/agents/skills/`: `bouchet-storage`, `bouchet-modules`, `bouchet-conda`, `bouchet-r`, `bouchet-slurm`, `bouchet-parallel`, `bouchet-job-troubleshooting`, `bouchet-dsq-arrays`, `bouchet-gpu`, `bouchet-priority`, `bouchet-scavenge`, `bouchet-apptainer`, `bouchet-alphafold`, `bouchet-cryosparc`, `bouchet-mpi`, and `bouchet-scratch`.
-- Claude: confirm `$HOME/.claude-ycrc/skills` is a real writable directory whose sixteen `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- Confirm every skill listed in `AGENTS.md` exists both in the image under `/etc/agents/skills/` and in the installed module under `share/agents/skills/` (21 at present: the Bouchet workflow skills, `bouchet-easybuild-admin`, and the general research skills `bouchet-debugging`, `bouchet-research-file-safety`, `bouchet-research-analysis` and `bouchet-handoff`). `tests/skills-static.sh` checks the list against the source tree.
+- Claude: confirm `$HOME/.claude-ycrc/skills` is a real writable directory whose `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
 - Codex: confirm `/etc/codex/skills/bouchet-*` entries remain symlinks to `/etc/agents/skills/bouchet-*` inside the image.
 - Copilot: confirm `COPILOT_SKILLS_DIRS=/etc/agents/skills` is present inside the launched container.
-- Pi: confirm `$PI_CODING_AGENT_DIR/skills` is a real writable directory whose sixteen `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
+- Pi: confirm `$PI_CODING_AGENT_DIR/skills` is a real writable directory whose `bouchet-*` entries are symlinks to the host-visible module tree. Confirm an unrelated user skill can be created alongside them.
 - From a normal host shell, confirm the YCRC skill symlink targets resolve and their `SKILL.md` files can be read.
 - Ask each harness a Conda-specific question and confirm it loads/applies the Bouchet Conda skill rather than inventing generic cluster behavior.
 - Ask each harness an R, Slurm, CPU-parallelism, MPI, job-troubleshooting, dSQ/array, GPU, Apptainer, AlphaFold, CryoSPARC, modules, and storage question and confirm the corresponding skill is discoverable and used on demand.
 - Confirm the canonical `AGENTS.md` remains relatively small and that detailed workflow instructions are not duplicated there.
+
+## Read-only binds, configuration import and renv
+
+- `--bind` of the home directory, a parent of it, a hidden path, a container system directory (`/etc`, `/usr`, ...) or `:rw` must stop the launch before Apptainer starts. A bound directory must be readable but not writable inside the session, and the working directory must stay writable when a parent of it is bound (`tests/user-binds.sh`, `tests/module-e2e.sh`).
+- Each of the user's groups' readable `<base>/<group>/shared` directories is mounted read-only and announced at launch.
+- Configuration imported from `~/.claude`, `~/.codex`, `~/.pi/agent` or `~/.copilot` must never include credentials, session history, MCP servers, plugins or account-synced skills, and imported settings must not redirect the harness to another provider or model (`tests/user-config-import.sh`).
+- `RENV_PATHS_CACHE` is `~/R/renv-cache` unless the user set it, and a file written there persists on the host after the session (the container's own home is a temporary filesystem).

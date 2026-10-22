@@ -51,7 +51,7 @@ The Apptainer wrapper is the common security boundary for all four agents. It:
 - requires an active Slurm allocation and verifies the current host is in `SLURM_JOB_NODELIST`;
 - derives the real account name/home from `id`/`getent` rather than trusting exported `USER` or `HOME`;
 - uses `--contain` and disables implicit `hostfs`, administrator bind-path, and current-working-directory mounts before adding its own approved binds;
-- binds only the launch directory plus explicitly approved state/software paths;
+- binds only the launch directory plus explicitly approved state/software paths, and read-only: the user's groups' `shared` directories and directories named with `--bind`;
 - preserves Bouchet's group-derived project/scratch/PI access validation;
 - rejects hidden working directories, storage roots, configured bind roots, and excluded locations;
 - strips credential-like exported variables before the container is started;
@@ -133,7 +133,11 @@ images/build.sh OUTDIR codex        # only Codex, on OUTDIR's existing base
 ```
 
 This writes `OUTDIR/coding-agents-<harness>.sif` and records the harness versions
-that shipped in `OUTDIR/versions.txt` (only Pi is pinned). Stage each image into
+that shipped in `OUTDIR/versions.txt`. All four harnesses are unpinned, so every
+build picks up their current releases; compare `versions.txt` with the deployed
+versions and test before deploying. Claude's policy (`/etc/claude-code/CLAUDE.md`)
+and Codex's and Copilot's skills come from the image, so changes to `AGENTS.md`
+or `etc/agents/` need an image rebuild as well as a module rebuild. Stage each image into
 `easybuild-sources/<letter>/<harness>-local/`, inject the checksums
 (`eb <harness>-local.eb --inject-checksums --force`; after editing `AGENTS.md` or `etc/agents/`, first run `eb/make-site-tarball.sh`), and install with
 `services/bin/rebuild-when-idle.sh`, which builds the bundle and all four
@@ -145,13 +149,23 @@ The launcher (`eb/coding-agents-wrapper.sh`) and the shared configuration in
 `eb/` are one copy in this repository, installed into every harness module: the
 launcher reads its configuration only from its own install directory.
 
+### Tests
+
+| Test | Needs | Covers |
+| --- | --- | --- |
+| `tests/skills-static.sh` | nothing | skill files well formed and listed in `AGENTS.md`; no `module purge`/`unload` or `agent`-partition examples; packaged tarball matches the source |
+| `tests/user-binds.sh` | nothing | `--bind` parsing and checks; group shared directories |
+| `tests/user-config-import.sh` | nothing | importing users' own harness configuration |
+| `tests/module-e2e.sh` | a Slurm allocation | live sessions of all four harnesses against an install (`MODULE_ROOT`, default the test install): module layout, launch restrictions, tool use, credential isolation, `--bind`, group shared directories, StdEnv, the renv cache, and policy precedence over a conflicting project instruction file |
+
+The precedence check in `module-e2e.sh` tests model behavior, so a failure there can be flaky; read the generated `run.sh` before concluding. Each harness reads the policy and skills through links into its module's `share/agents`, which resolve inside the container only under `/apps`. For a test install elsewhere, `module-e2e.sh` adds `--bind <install>/software` to every launch; without it those links dangle and the agents run with no YCRC policy. Do the same when testing a non-`/apps` install by hand.
+
 Before production deployment:
 
-1. pin tested Claude, Codex, and Copilot CLI versions (Pi is pinned to the validated 0.85.1 release);
+1. rebuild and stage the images if `AGENTS.md`, `etc/agents/` or `images/` changed, and check `versions.txt`;
 2. populate EasyBuild checksums;
-3. run the Bouchet sandbox regression tests for all four launchers;
-4. verify local-model tool use for all four clients;
-5. verify inherited credentials and user-supplied Apptainer/Singularity provider overrides do not enter the container.
+3. run the tests above against the test install, and `MODULE_ROOT=/apps/software/system tests/module-e2e.sh` after deploying;
+4. verify inherited credentials and user-supplied Apptainer/Singularity provider overrides do not enter the container (covered by `module-e2e.sh`).
 
 ## Slurm boundary caveat
 
