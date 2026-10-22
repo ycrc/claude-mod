@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'claude-local'
-version = '1.1'
+version = '1.2'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 

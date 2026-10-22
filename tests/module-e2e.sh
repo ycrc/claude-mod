@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test of local-coding-agents/1.1 from an EasyBuild install tree
+# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.2) from an EasyBuild install tree
 # (MODULE_ROOT, default the test install; set it to /apps/software/system to
 # check production)
 # Run inside a Slurm allocation. Sends a few small requests to
@@ -7,6 +7,7 @@
 set -uo pipefail
 source /etc/profile.d/modules.sh
 T="${MODULE_ROOT:-$HOME/project/generalagents/test-install/system}"
+V="${MODULE_VERSION:-1.2}"
 E="${E2E_WORKDIR:-$HOME/scratch/coding-agents-e2e}"
 # Each harness reads the managed policy and skills through links into its
 # module's share/ directory. Production lives under /apps, which the launcher
@@ -22,18 +23,18 @@ module purge >/dev/null 2>&1
 module use "$T/modules/all"
 echo "== module structure"
 avail="$(module -t avail 2>&1)"
-check "bundle visible in avail"             'grep -q "^local-coding-agents/1.1" <<< "$avail"'
+check "bundle visible in avail"             'grep -q "^local-coding-agents/$V" <<< "$avail"'
 check "harness modules hidden from avail"   '! grep -qE "^(claude|codex|copilot|pi)-local" <<< "$avail"'
-module load local-coding-agents/1.1 2>/dev/null
+module load local-coding-agents/$V 2>/dev/null
 loaded="$(module -t list 2>&1)"
 echo "$loaded" | sed 's/^/   /'
 for h in claude codex copilot pi; do
-    check "$h on PATH from $h-local"        '[[ "$(command -v $h)" == "$T/software/$h-local/1.1/$h" ]]'
+    check "$h on PATH from $h-local"        '[[ "$(command -v $h)" == "$T/software/$h-local/$V/$h" ]]'
 done
 module purge >/dev/null 2>&1; module use "$T/modules/all"
-module load pi-local/.1.1 2>/dev/null
-check "hidden module loadable directly"     '[[ "$(command -v pi)" == "$T/software/pi-local/1.1/pi" && "$(command -v codex)" != "$T"/* ]]'
-module purge >/dev/null 2>&1; module use "$T/modules/all"; module load local-coding-agents/1.1 2>/dev/null
+module load pi-local/.$V 2>/dev/null
+check "hidden module loadable directly"     '[[ "$(command -v pi)" == "$T/software/pi-local/$V/pi" && "$(command -v codex)" != "$T"/* ]]'
+module purge >/dev/null 2>&1; module use "$T/modules/all"; module load local-coding-agents/$V 2>/dev/null
 
 echo "== launch restrictions"
 rm -rf "$E"; mkdir -p "$E/.hidden/x"
@@ -57,7 +58,7 @@ for h in claude codex copilot pi; do
     echo "-- $h exit $rc in $(( $(date +%s) - t0 ))s; last reply line: $(grep -v '^\s*$' out.txt | tail -1 | cut -c1-120)"
     check "$h session exit 0"                '[[ $rc == 0 ]]'
     check "$h wrote code and tests"          '[[ -f add.py && -f test_add.py ]]'
-    check "$h tests pass in its image"       'apptainer exec --contain --bind "$W:$W" --pwd "$W" "$T/software/$h-local/1.1/coding-agents-$h.sif" python -m pytest -q >/dev/null 2>&1'
+    check "$h tests pass in its image"       'apptainer exec --contain --bind "$W:$W" --pwd "$W" "$T/software/$h-local/$V/coding-agents-$h.sif" python -m pytest -q >/dev/null 2>&1'
     if [[ $h == claude && ! -e env.txt ]]; then
         # Claude's managed permission checks may (correctly) refuse to dump the
         # environment as reconnaissance; the scrubbing is common launcher code
@@ -70,7 +71,7 @@ for h in claude codex copilot pi; do
     check "$h used its own image"            'grep -q "^image=.*/coding-agents-$h.sif$" env.txt'
 done
 echo "== sessions request the served model by its real name"
-served="$(curl -sS -m 5 -H "Authorization: Bearer ${USER}.pi" "$(sed -n "s/^YCRC_COPILOT_BASE_URL='\(.*\)'$/\1/p" "$T/software/pi-local/1.1/coding-agents-provider.conf")/models" |
+served="$(curl -sS -m 5 -H "Authorization: Bearer ${USER}.pi" "$(sed -n "s/^YCRC_COPILOT_BASE_URL='\(.*\)'$/\1/p" "$T/software/pi-local/$V/coding-agents-provider.conf")/models" |
     python3 -c 'import json,sys; print(next(m["id"] for m in json.load(sys.stdin)["data"] if m["id"]!="ycrc-local" and not m["id"].endswith("-think")))')"
 echo "   served model: $served"
 check "codex config names the served model"  'grep -qx "model = \"$served\"" "$HOME/.codex-ycrc/config.toml"'

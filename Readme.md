@@ -1,4 +1,4 @@
-# Bouchet Coding Agents 1.1
+# Bouchet Coding Agents 1.2
 
 
 ## Choosing a harness
@@ -33,7 +33,7 @@ From 1.1, `local-coding-agents` is a bundle that loads four hidden modules, one
 per harness: `claude-local`, `codex-local`, `copilot-local` and `pi-local`. Each
 has its own image and launcher, so a harness can be upgraded without touching
 the others. They do not appear in `module avail`, but can be loaded directly for
-testing, e.g. `module load pi-local/.1.1`.
+testing, e.g. `module load pi-local/.1.2`.
 
 All four clients share the same outer Apptainer containment and Bouchet storage policy. The launcher removes inherited credential-like environment variables and host-controlled Apptainer mount/environment overrides before injecting administrator-controlled local-model settings from an installed read-only provider configuration.
 
