@@ -6,6 +6,8 @@ description: Use for Slurm jobs, sbatch/srun/salloc, resource requests, partitio
 # Bouchet Slurm
 
 - Computational work belongs in Slurm jobs/allocations, not on login or transfer nodes.
+- The coding agent already runs inside its own small `agent`-partition allocation, meant for coordination, editing, inspection, small tests and job submission. Do not request another `agent` allocation, and do not run substantial computation in the session: submit it with `sbatch` to the appropriate CPU, GPU or development partition.
+- For short CPU development and testing, use `devel`; for GPU development, `gpu_devel` (see `bouchet-gpu`). Their per-user limits are aggregate across all of a user's jobs in the partition; check the current values (see `references/slurm-resources.md`) rather than relying on remembered numbers.
 - Match CPU, memory, GPU, and walltime requests to the workload.
 - Prefer durable `sbatch` scripts for longer-running work.
 - `sbatch` and `srun` are intentionally permitted by this deployment. Jobs they launch run as normal user Slurm jobs outside the interactive coding-agent Apptainer filesystem sandbox.

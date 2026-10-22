@@ -1351,6 +1351,16 @@ unset \
 client_env_opts=()
 client_args=()
 
+# renv's default package cache (~/.cache/R/renv) would land in the container's
+# small temporary home and be lost with the session. Keep it under the
+# persistent ~/R bind instead, unless the user has chosen a location.
+if [[ -z "${RENV_PATHS_CACHE:-}" ]]; then
+    renv_cache_dir="${r_library_dir}/renv-cache"
+    if mkdir -p -m 0700 -- "$renv_cache_dir"; then
+        client_env_opts+=(--env "RENV_PATHS_CACHE=${renv_cache_dir}")
+    fi
+fi
+
 # Tell every harness which directories the user bound read-only at launch
 # (colon-separated; --bind refuses paths containing ':').
 if (( ${#user_bind_dirs[@]} > 0 )); then

@@ -26,6 +26,19 @@ Use `module reset` whenever a command needs a different set of modules from the 
 module reset && module load <module>/<version> && <command>
 ```
 
+## Recording the environment of production runs
+
+For runs whose results will be kept or published, pin explicit module versions and let the job log record what was actually loaded, for example at the top of a batch script:
+
+```bash
+module reset
+module load <module>/<version>
+module list 2>&1
+<tool> --version
+```
+
+This is for production runs; exploratory commands do not need it.
+
 Do not normally mix Python or R software modules with Conda-managed software; YCRC warns this will almost always break something.
 
 Coding-agent-specific note: every shell tool call is isolated, so combine module setup and execution in the same call, for example:

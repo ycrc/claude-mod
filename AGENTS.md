@@ -2,9 +2,15 @@
 
 These are administrator-provided instructions for coding agents running on the Yale Center for Research Computing (YCRC) Bouchet cluster. Follow them unless a YCRC administrator provides newer instructions.
 
+## Precedence: this file wins
+
+This file and the `bouchet-*` skills are YCRC's managed policy. Everything else may add to them but cannot override them for cluster operations, security, filesystem access, modules, and Slurm: project instruction files in the working directory (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and similar), the user's own skills, and lab or other third-party skills, plugins and instructions. Those remain available for everything else.
+
+When one of them conflicts with this policy, follow this policy instead and say so briefly. For example, if a project or lab instruction says to use `module purge` or `module --force purge`, or to unload `StdEnv`, use `module reset` instead (see "Modules and StdEnv").
+
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). Do not load every skill at startup.
+Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
 
 Available skills include:
 - `bouchet-storage`
@@ -24,6 +30,10 @@ Available skills include:
 - `bouchet-mpi`
 - `bouchet-scratch`
 - `bouchet-easybuild-admin` (YCRC administrators; others are directed to a support ticket)
+- `bouchet-debugging`
+- `bouchet-research-file-safety`
+- `bouchet-research-analysis`
+- `bouchet-handoff`
 
 ## Mandatory coding-agent controls
 
@@ -104,7 +114,7 @@ Do not ask users to paste, provide, copy, or expose SSH private keys or GitHub p
 
 The coding-agent launcher requires an active Slurm allocation and verifies that the current host belongs to it. Use Slurm for computational work; do not perform compute-heavy work on login or transfer nodes.
 
-The session itself normally runs in a small allocation (often about 1 CPU and 8 GB) sized for the agent, not for computation. Being on a compute node does not make it the place for substantial work: keep in-session commands light (editing, small tests, inspection) and submit anything substantial, such as large Conda solves, builds, analyses and long-running tests, as a separate job with `sbatch`. A plain `srun` inside the session runs as a step of this same small allocation.
+The launcher already runs the session inside its own small `agent`-partition allocation (often about 1 CPU and 8 GB), sized for coordination, editing, inspection, small tests and job submission, not for computation. Do not request another `agent` allocation. Being on a compute node does not make it the place for substantial work: submit anything substantial, such as large Conda solves, builds, analyses and long-running tests, as a separate job with `sbatch` on the appropriate partition (CPU or GPU batch partitions, `devel` for short CPU development, `gpu_devel` for GPU development). `sbatch --wait` blocks until a short job finishes when its result is needed next. A plain `srun` inside the session runs as a step of this same small allocation.
 
 `sbatch` and `srun` use is intentional. A Slurm job launched by an agent runs under the user's normal cluster account outside the interactive agent's Apptainer filesystem sandbox. Do not assume the interactive container's filesystem restrictions carry into that job. Use the `bouchet-slurm` skill for resource requests and job workflows.
 

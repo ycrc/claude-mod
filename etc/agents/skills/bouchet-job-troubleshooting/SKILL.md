@@ -103,6 +103,22 @@ Do not conclude that the fix is always "request fewer CPUs" without understandin
 
 Low memory efficiency means the job may be over-requesting host RAM, but tune from multiple representative runs when workloads vary substantially.
 
+## Sizing the next job from completed jobs
+
+When a comparable job will be run again, size its request from what earlier runs actually used:
+
+```bash
+sacct -j <jobid> -o JobID,State,ExitCode,Elapsed,Timelimit,ReqMem,MaxRSS,ReqCPUS,TotalCPU,AllocTRES
+seff <jobid>            # or seff-array <array_job_id>
+jobstats <jobid>        # includes GPU utilization and GPU memory
+```
+
+- Use only runs that **completed successfully** and are comparable (same tool and version, similar input size and parameters). An OOM, timeout, cancellation or missing accounting record does not show what the job needed; it shows only that the request was not enough, or nothing.
+- Compare requested with observed: peak memory (`MaxRSS`) against `ReqMem`, CPU time against elapsed time × CPUs, and elapsed time against the time limit. Leave headroom for variation rather than requesting the exact peak.
+- **Host RAM and GPU memory are separate.** `MaxRSS`/`seff` report host RAM; GPU memory and GPU utilization come from `jobstats`. Size `--mem` from the former and the GPU type/count from the latter (see `bouchet-gpu`).
+- **Array tasks vary.** Look at the spread across tasks (`seff-array`), not only the average; size for the larger tasks or split unusually large inputs.
+- Low CPU or GPU utilization needs a diagnosis before cutting the request (see "CPU or memory inefficiency" above); reducing CPUs and time together on one observation can make the next run time out.
+
 ## Disk/quota failures
 
 If a job cannot create/write files or reports disk-quota errors, inspect quota rather than increasing Slurm memory:
@@ -136,6 +152,7 @@ module load <module>
 or:
 
 ```bash
+module reset
 module load miniconda
 conda activate <env>
 python script.py

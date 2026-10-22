@@ -14,4 +14,5 @@ Key YCRC guidance captured here:
 - Incompatible software module toolchains can cause reload/conflict errors and abnormal application behavior; use compatible modules/reset when switching toolchains.
 - Conda environments should be established in the batch job itself rather than assumed to carry over correctly from the submission shell.
 - `seff` reports completed-job CPU and memory efficiency; `seff-array` summarizes arrays; `sacct` provides flexible job/accounting state and resource data.
-- Representative actual usage should guide future CPU, RAM, and walltime requests.
+- Representative actual usage should guide future CPU, RAM, and walltime requests. Only successful, comparable runs count as evidence of need: a failed, timed-out or OOM-killed run, or a missing accounting record, does not establish an adequate request.
+- `sacct` fields useful for sizing: `ReqMem` vs `MaxRSS` (host memory), `ReqCPUS` and `TotalCPU` vs `Elapsed` (CPU use), `Elapsed` vs `Timelimit`. `MaxRSS` is reported per step; for multi-step jobs inspect the steps without `-X`. GPU utilization and GPU memory come from `jobstats`, not from `sacct`/`seff`.

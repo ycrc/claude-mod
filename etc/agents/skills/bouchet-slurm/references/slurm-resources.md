@@ -27,6 +27,27 @@ sinfo -N -h -o "%N %P %G" | grep -i h200
 
 Use Slurm output for live node/partition state. Do not infer that a GPU model does not exist on Bouchet merely because it is absent from the `gpu` partition.
 
+## Development partitions
+
+`devel` is for short CPU development, testing and interactive work; `gpu_devel` is its GPU counterpart. Each has a partition QoS whose per-user limits apply to all of a user's jobs in that partition together, not to each job. Values read from live Slurm configuration on 2026-10-22 (recheck before relying on them):
+
+| Partition | Per-user limit (all jobs together) | Jobs | Walltime |
+| --- | --- | --- | --- |
+| `devel` | 4 CPUs, 60G | 2 submitted | 6 h (default 1 h) |
+| `gpu_devel` | 12 CPUs, 2 GPUs, 256G | 1 running, 1 submitted | 6 h (default 1 h) |
+
+Both default to 5G of memory per CPU. To check the current values:
+
+```bash
+scontrol show partition devel        # QoS, default time and memory
+sacctmgr -nP show qos where Name=part_devel,part_gpu_devel \
+    format=Name,MaxTRESPU,MaxJobsPU,MaxSubmitJobsPU,MaxWall
+```
+
+A request beyond these limits is rejected (the QoS uses `DenyOnLimit`). Work that needs more belongs in a batch job on a standard partition, not in a larger development allocation.
+
+The coding agent itself runs in a small `agent`-partition allocation started by the launcher. That allocation is for the agent, not for the user's computation, and the agent should not request another one.
+
 ## Partition access and priority partitions
 
 Partition existence and user entitlement are separate questions. It is fine to recommend a partition that matches the requested resources, but do not assume that the current user can submit there simply because `sinfo` or `scontrol` lists it.

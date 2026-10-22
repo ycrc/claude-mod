@@ -57,7 +57,8 @@ echo same > "$H/.pi/agent/prompts/same.md"
 # A returning user: Pi already ran under the module before this feature and
 # saved its own settings and a prompt, all newer than the user's originals.
 mkdir -p "$H/.pi-ycrc/prompts"
-touch -d '1 month ago' "$H/.pi/agent/settings.json" "$H/.pi/agent/prompts/"*
+# A date without spaces: Bouchet's /usr/bin/touch wrapper word-splits its arguments.
+touch -d "@$(( $(date +%s) - 30 * 86400 ))" "$H/.pi/agent/settings.json" "$H/.pi/agent/prompts/"*
 echo '{"lastChangelogVersion": "0.85.1", "theme": "dark"}' > "$H/.pi-ycrc/settings.json"
 echo made-in-ycrc > "$H/.pi-ycrc/prompts/fix.md"
 echo same > "$H/.pi-ycrc/prompts/same.md"
