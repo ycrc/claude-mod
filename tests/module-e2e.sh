@@ -66,4 +66,29 @@ echo "== extended reasoning through the alias"
 W="$E/think"; mkdir -p "$W"; cd "$W"
 out="$(YCRC_THINKING=1 timeout 600 claude -p "Reply with only the word OK." --dangerously-skip-permissions 2>&1)"; rc=$?
 check "claude with YCRC_THINKING=1 (ycrc-local-think) answers" '[[ $rc == 0 ]] && grep -q "OK" <<< "$out"'
+
+echo "== read-only --bind"
+B="$E/bound-data"; mkdir -p "$B"; marker="marker-$RANDOM$RANDOM"; echo "$marker" > "$B/marker.txt"
+check "--bind of home refused before launch"  '! (cd "$E" && timeout 60 pi --bind "$HOME" -p hi >/dev/null 2>&1)'
+for h in claude pi; do
+    W="$E/bind-$h"; mkdir -p "$W"; cd "$W"
+    P="Use your tools to run these two shell commands and report their exact output: cat $B/marker.txt ; touch $B/written-by-$h && echo WRITE-OK || echo WRITE-FAILED"
+    case $h in
+        claude) cmd=(claude --bind "$B" -p "$P" --dangerously-skip-permissions) ;;
+        pi)     cmd=(pi --bind "$B" -p "$P") ;;
+    esac
+    timeout 600 "${cmd[@]}" > out.txt 2> err.txt; rc=$?
+    check "$h --bind: launched, bind reported"  '[[ $rc == 0 ]] && grep -q "Binding read-only: $B" err.txt'
+    check "$h --bind: read the bound file"      'grep -q "$marker" out.txt'
+    check "$h --bind: could not write there"    '[[ ! -e "$B/written-by-$h" ]]'
+done
+# Every session also gets the user's groups' shared directories, read-only.
+for g in $(id -Gn); do
+    for base in /nfs/roberts/project /nfs/roberts/pi /nfs/roberts/scratch; do
+        d="$base/$g/shared"
+        if [[ -d "$d" && -r "$d" && -x "$d" ]]; then
+            check "group shared $d bound"   'grep -qx "Binding read-only: $d (group shared directory)" "$E/bind-pi/err.txt"'
+        fi
+    done
+done
 echo "== $pass passed, $fail failed"

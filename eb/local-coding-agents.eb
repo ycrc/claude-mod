@@ -30,5 +30,8 @@ modloadmsg += '  claude   - Thorough & exploratory (slower)\n'
 modloadmsg += '\nAdministrators: use the Claude harness only.\n'
 modloadmsg += '\nAllocate a compute node before running, and start in a non-hidden subdirectory\n'
 modloadmsg += 'of your home, project, scratch, or approved PI space.\n'
+modloadmsg += '\nYour groups\' shared directories (<group>/shared) are available read-only.\n'
+modloadmsg += 'To let the agent read other directories, add --bind DIR when starting it;\n'
+modloadmsg += 'they are mounted read-only, for example:  pi --bind /path/to/data\n'
 
 moduleclass = 'devel'

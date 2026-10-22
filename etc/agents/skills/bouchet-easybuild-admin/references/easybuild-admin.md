@@ -23,7 +23,7 @@ module and on the default robot path). Cluster docs: `github.com/ycrc/ycrc.githu
 - Inside the coding-agent sandbox the user's `~/.config/easybuild` is not visible;
   EasyBuild would silently fall back to defaults under `~/.local/easybuild`. Always use
   `eb-test-env.sh`. It also:
-  - runs `module purge` first (as `testing()` does): with `detect-loaded-modules = purge`
+  - runs `module reset` first, keeping `StdEnv` (as `testing()` cleans up): with `detect-loaded-modules = purge`
     EasyBuild otherwise purges the agent's own module and its own `PATH` with it, and
     `--job` builds then fail with `eb: command not found`;
   - keeps EasyBuild logs in `software_builds/test-install/logs/`, because the

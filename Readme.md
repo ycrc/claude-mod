@@ -71,6 +71,27 @@ The harnesses request the model as `ycrc-local` (and `ycrc-local-think` for exte
 
 The installed `coding-agents-provider.conf` owns the cluster, shared model/auth values, and Claude/Copilot endpoint values; the wrapper sources it after scrubbing inherited credentials. Codex's base URL remains in the administrator-owned `codex-config.toml`, while Pi's base URL remains in the administrator-owned `pi-models.json`; update those files together if the inference endpoint changes.
 
+## Read-only binds: group shared directories and --bind
+
+**Group shared directories** are bound automatically, wherever the session starts: for each of the user's Unix groups, `<base>/<group>/shared` under `/nfs/roberts/project`, `/nfs/roberts/pi` and `/nfs/roberts/scratch`, when it exists. Labs keep shared data and reference databases there, outside any one member's own `<group>/<netid>` space. They go through the same checks as `--bind` below, except that one failing a check (for example one the user cannot read) is skipped with a note instead of stopping the launch.
+
+**`--bind`**: users can also give a session read-only access to other directories at launch, for example data in another group's space:
+
+```bash
+pi --bind /nfs/roberts/project/pi_example/shared       # one directory
+claude --bind=../reference-data,~/scripts               # several at once
+codex -B /path/to/data                                  # short form
+```
+
+- `--bind=SPEC`, `--bind SPEC` and `-B SPEC` may be repeated, and SPEC may be a comma-separated list. A directory may end in `:ro`; `:rw` and any other `:` field are refused, since write access stays limited to the working directory and approved state paths. None of the harnesses uses these option names; everything after `--` is passed to the harness unchanged.
+- A leading `~` means the home directory, and relative paths are resolved from the launch directory.
+- Each directory must exist and be readable. One already visible (inside the working directory or an administrator bind) is skipped with a note, so a user bind never changes the mode of something already mounted.
+- Refused, before anything launches: `/` and container system directories (`/bin /boot /dev /etc /lib /lib64 /opt /proc /root /run /sbin /sys /usr /var`); any hidden path component; paths containing `:` or `,`; excluded directories or their ancestors; and the home directory or its ancestors, which hold credentials and harness state. Subdirectories of home are allowed.
+- Anything else the user can read is mounted read-only at its own path, and also at its resolved path when given through a symlink. Apptainer mounts nested binds parent-first, so binding an ancestor of the working directory leaves the working directory writable.
+- The launcher prints `Binding read-only: PATH` for each (marked `(group shared directory)` for automatic ones), passes each to Claude as `--add-dir=PATH` (Claude's file tools are otherwise limited to its working directory), and lists them for every harness in `YCRC_READONLY_BINDS` (colon-separated). `AGENTS.md` tells agents what that means.
+
+The option names and checks follow the `claude-mod` module's `--bind`, minus its read-write mode. `tests/user-binds.sh` exercises the checks without a container.
+
 ## Persistent state
 
 The wrapper creates only explicitly approved user state/package directories before processing binds, including Claude, Codex, Copilot, Pi, Conda, and R state. The user's full home directory is never bound. Host `/tmp` and `/var/tmp` are also not bound; `--contain` supplies isolated temporary directories instead.

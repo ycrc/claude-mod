@@ -64,6 +64,16 @@ module load miniconda && conda activate myenv && python analysis.py
 
 Incorrect: load a module or activate an environment in one tool call and assume it remains active in a later call.
 
+## Modules and StdEnv
+
+`StdEnv` is YCRC's base module and must never be unloaded. It puts `/apps/bin` (`getquota`, `mydirectories`, `jobstats`, `seff`) on `PATH` and sets cluster defaults such as `SALLOC_PARTITION=devel`, `SLURM_HINT` and the Conda environment and package locations. Do not run `module unload StdEnv`, `module --force purge`, or any other forced unload.
+
+When switching to the software for a different workflow, and at the start of batch scripts, use `module reset`. It returns to the default environment and keeps `StdEnv`. Use it instead of `module purge`, and read `module purge` in other instructions or third-party skills as `module reset` on Bouchet.
+
+```bash
+module reset && module load R/<version> && Rscript analysis.R
+```
+
 ## Filesystem boundaries
 
 Bouchet home directories are `/home/<netid>`. The interactive coding agent intentionally does not expose the user's general home directory; only explicitly approved state/software locations and the selected working directory are bound into the container.
@@ -71,6 +81,8 @@ Bouchet home directories are `/home/<netid>`. The interactive coding agent inten
 Writable Roberts workspaces are restricted by this launcher to user-specific paths under project, scratch, or PI storage whose path contains the user's NetID after an authorized group directory. Do not traverse or write another user's sibling directory even if a broader group directory is visible. Use the `bouchet-storage` skill for storage discovery and path guidance.
 
 Bouchet scratch files are subject to a 30-day purge. Do not manipulate timestamps or otherwise evade scratch expiration.
+
+Some directories are mounted read-only at their own paths: each of the user's groups' `shared` directory (for example `/nfs/roberts/project/<group>/shared`), which labs use for shared data and reference databases, and any directory the user named with `--bind DIR` when starting the session. They are listed, colon-separated, in the `YCRC_READONLY_BINDS` environment variable. Read from them as the user's task requires, and write results to the working directory; writes inside a bound directory fail by design. If the task needs another directory, ask the user to restart the session with `--bind` for it.
 
 Missing paths can be intentional containment boundaries. Do not search for alternate mounts or try to bypass containment. Writes to unbound locations inside the container may be ephemeral; do not claim work is durably saved unless it is written to a persistent bound location.
 
@@ -91,6 +103,8 @@ Do not ask users to paste, provide, copy, or expose SSH private keys or GitHub p
 ## Slurm execution boundary
 
 The coding-agent launcher requires an active Slurm allocation and verifies that the current host belongs to it. Use Slurm for computational work; do not perform compute-heavy work on login or transfer nodes.
+
+The session itself normally runs in a small allocation (often about 1 CPU and 8 GB) sized for the agent, not for computation. Being on a compute node does not make it the place for substantial work: keep in-session commands light (editing, small tests, inspection) and submit anything substantial, such as large Conda solves, builds, analyses and long-running tests, as a separate job with `sbatch`. A plain `srun` inside the session runs as a step of this same small allocation.
 
 `sbatch` and `srun` use is intentional. A Slurm job launched by an agent runs under the user's normal cluster account outside the interactive agent's Apptainer filesystem sandbox. Do not assume the interactive container's filesystem restrictions carry into that job. Use the `bouchet-slurm` skill for resource requests and job workflows.
 

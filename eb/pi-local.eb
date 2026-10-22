@@ -27,14 +27,14 @@ sources = [
 ]
 checksums = [
     {'coding-agents-pi.sif': '4f340aab4c682aa9a4051834f32064746576c59f21aa8840595900ba89bdc6ab'},
-    {'coding-agents-wrapper.sh': '85bb3dd94f9696e3b051532a768f0cb9353549c2a564197d68ce43ee9b43baf0'},
+    {'coding-agents-wrapper.sh': 'f24d88ceaf488acd6a388de1a48451b0f50ebc956471bba8d6227fdef9101ee2'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
     {'pi-models.json': '6c7edd5af78d744d08964a710c9642a3d65bd78699f83e30875f2f3a9725fa1a'},
-    {'coding-agents-site.tar.gz': '02dd38f2c950cf48c5ec92c362c7e72e7117e853937f14d1c6324cb2192ea3e2'},
+    {'coding-agents-site.tar.gz': 'dd0d68964e89ddb32b53232125c291dd86512b4f451a4dd76614e6efebcc3675'},
 ]
 
 postinstallcmds = [

@@ -28,8 +28,8 @@ fi
 # Start from a clean module environment, as testing() in siteconfigs/bashrc
 # does: the site config's detect-loaded-modules=purge otherwise purges other
 # loaded modules (e.g. local-coding-agents) and EasyBuild's own PATH with them,
-# so `eb --job` submits jobs that cannot find eb.
-module purge >/dev/null 2>&1
+# so `eb --job` submits jobs that cannot find eb. module reset keeps StdEnv.
+module reset >/dev/null 2>&1
 module load EasyBuild/5.4.0 || { return 1 2>/dev/null || exit 1; }
 export EASYBUILD_CONFIGFILES="$_ebt_here/siteconfigs/bouchet.cfg"
 export EASYBUILD_ROBOT_PATHS="$_ebt_here/easyconfigs:$EBROOTEASYBUILD/easybuild/easyconfigs"

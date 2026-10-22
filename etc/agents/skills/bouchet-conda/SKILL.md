@@ -12,7 +12,7 @@ Follow YCRC's Bouchet Conda workflow.
 - Bouchet does **not** impose a site channel whitelist for Conda. Standard Conda channel behavior is available; use any channels required by the user's environment or package.
 - YCRC configures `conda-forge` and `bioconda` as default channels in the Miniconda module.
 - Prefer installing as much as practical with Conda first. If `pip` is needed, use it after the Conda packages are installed.
-- Avoid mixing module-provided Python/R software with Conda-managed software. When using a Conda environment, `miniconda` should normally be the only software module loaded.
+- Avoid mixing module-provided Python/R software with Conda-managed software. When using a Conda environment, `miniconda` should normally be the only software module loaded: start from `module reset`, which keeps the `StdEnv` base module (never unload `StdEnv`; it is not a software module and it sets the Conda environment and package locations).
 - Agent shell calls are isolated. Load Miniconda, activate the environment, and run the dependent command in the same shell invocation.
 - Conda state under the approved user `.conda` area is writable. Do not modify the administrator-managed container image or `/apps`.
 

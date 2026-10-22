@@ -26,6 +26,56 @@ esac
 # beside its own image, so the image is chosen by the name it was invoked as.
 image="${launcher_dir}/coding-agents-${agent}.sif"
 
+# --- BEGIN user bind arguments ---
+# Take the launcher's own --bind options out of the arguments; everything else
+# goes to the harness. --bind=SPEC, --bind SPEC and -B SPEC may be repeated,
+# and SPEC may be a comma-separated list. Scanning stops at "--", which is
+# passed on with everything after it. None of the four harnesses uses these
+# option names. The directories are checked under "User binds" below.
+user_bind_specs=()
+forwarded_args=()
+while (( $# > 0 )); do
+    case "$1" in
+        --)
+            forwarded_args+=("$@")
+            break
+            ;;
+        --bind=*|-B?*)
+            if [[ "$1" == --bind=* ]]; then
+                bind_arg="${1#--bind=}"
+            else
+                bind_arg="${1#-B}"
+            fi
+            ;;
+        --bind|-B)
+            if (( $# < 2 )); then
+                echo "Error: $1 needs a directory, for example: $agent --bind /path/to/data" >&2
+                exit 1
+            fi
+            bind_arg="$2"
+            shift
+            ;;
+        *)
+            forwarded_args+=("$1")
+            shift
+            continue
+            ;;
+    esac
+    if [[ -z "$bind_arg" ]]; then
+        echo "Error: --bind needs a directory, for example: $agent --bind /path/to/data" >&2
+        exit 1
+    fi
+    IFS=',' read -r -a bind_arg_parts <<< "$bind_arg"
+    for bind_arg_part in "${bind_arg_parts[@]}"; do
+        if [[ -n "$bind_arg_part" ]]; then
+            user_bind_specs+=("$bind_arg_part")
+        fi
+    done
+    shift
+done
+set -- "${forwarded_args[@]}"
+# --- END user bind arguments ---
+
 # Derive identity from the account database rather than trusting mutable HOME/USER
 # environment variables. These values are part of the filesystem security boundary.
 user_name="$(id -un)"
@@ -1002,6 +1052,171 @@ if [[ ! -r "$work_dir" || ! -w "$work_dir" || ! -x "$work_dir" ]]; then
     exit 1
 fi
 
+# --- BEGIN user binds ---
+# Read-only binds beyond the working directory and administrator binds:
+#
+# - Group shared directories, automatically: for each of the user's groups,
+#   <base>/<group>/shared under the project, PI and scratch bases, when it
+#   exists and the user can read it. Labs keep shared data and reference
+#   databases there, outside any one member's own space.
+# - Directories the user names with --bind (see "user bind arguments" above),
+#   for example data in another group's space.
+#
+# Each directory, in order:
+#   1. must be an existing directory the user can read;
+#   2. is skipped if it is already visible (inside the working directory or an
+#      administrator bind), so these binds never change the mode of something
+#      already mounted;
+#   3. is refused if it is or lies in a container system directory, has a
+#      hidden component, contains ':' or ',', is or contains an excluded
+#      directory, or is or contains the home directory (credentials and harness
+#      state live there);
+#   4. is otherwise mounted read-only at its own path, and at its resolved path
+#      too when that differs, as for administrator binds.
+# A refused --bind stops the launch; a group shared directory that fails a
+# check is skipped with a note. Binds are only ever read-only: write access
+# stays limited to the working directory and the approved state directories.
+# Apptainer mounts nested binds parent-first, so a bind above the working
+# directory leaves it writable.
+path_is_within() {
+    [[ "$1" == "$2" || "$1" == "$2/"* ]]
+}
+
+# Binding over these would replace the image's own files.
+container_system_dirs=(/bin /boot /dev /etc /lib /lib64 /opt /proc /root /run /sbin /sys /usr /var)
+user_bind_opts=()
+user_bind_dirs=()
+declare -A user_bind_seen=()
+
+# add_readonly_bind SPEC: check SPEC and queue it, setting bind_logical to its
+# container path. Returns 1 with the reason in bind_problem if it is refused,
+# or 2 if it is skipped as already available.
+add_readonly_bind() {
+    local spec="$1" path logical resolved visible root candidate system_dir
+
+    bind_problem=""
+    path="$spec"
+    case "$path" in
+        *:rw)
+            bind_problem="--bind gives read-only access only; it cannot make a directory writable: $spec"
+            return 1
+            ;;
+        *:ro)
+            path="${path%:ro}"
+            ;;
+    esac
+    if [[ "$path" == *:* ]]; then
+        bind_problem="--bind takes a directory, optionally followed by :ro; other ':' fields are not supported: $spec"
+        return 1
+    fi
+    # A leading ~ arrives literally when written as --bind=~/x.
+    # shellcheck disable=SC2088
+    case "$path" in
+        "~") path="$host_home" ;;
+        "~/"*) path="${host_home}/${path#"~/"}" ;;
+    esac
+
+    # 1. An existing directory the user can read. Relative paths are resolved
+    # from the launch directory.
+    if ! resolved="$(realpath -e -- "$path" 2>/dev/null)" || [[ ! -d "$resolved" ]]; then
+        bind_problem="not an existing directory: $spec"
+        return 1
+    fi
+    if [[ ! -r "$resolved" || ! -x "$resolved" ]]; then
+        bind_problem="you cannot read this directory: $spec"
+        return 1
+    fi
+    # The path as given (made absolute) is kept when it still leads to the same
+    # directory, so a symlinked path works under both names.
+    logical="$(realpath -s -m -- "$path")"
+    if [[ "$(realpath -e -- "$logical" 2>/dev/null)" != "$resolved" ]]; then
+        logical="$resolved"
+    fi
+
+    # 2. Already visible.
+    visible=false
+    if path_is_within "$resolved" "$work_dir" || [[ -n "${user_bind_seen[$logical]:-}" ]]; then
+        visible=true
+    fi
+    for root in "${configured_bind_roots[@]}" "${configured_bind_paths[@]}"; do
+        if path_is_within "$resolved" "$root" || path_is_within "$logical" "$root"; then
+            visible=true
+        fi
+    done
+    if [[ "$visible" == true ]]; then
+        return 2
+    fi
+
+    # 3. Refused paths, checked for both the given and the resolved path.
+    for candidate in "$logical" "$resolved"; do
+        if [[ "$candidate" == / ]]; then
+            bind_problem="/ cannot be bound."
+            return 1
+        fi
+        for system_dir in "${container_system_dirs[@]}"; do
+            if path_is_within "$candidate" "$system_dir"; then
+                bind_problem="$candidate is in the container system directory $system_dir."
+                return 1
+            fi
+        done
+        if [[ "$candidate" == */.* ]]; then
+            bind_problem="hidden directories cannot be bound: $candidate"
+            return 1
+        fi
+        if [[ "$candidate" == *[:,]* ]]; then
+            bind_problem="Apptainer cannot bind a path containing ':' or ',': $candidate"
+            return 1
+        fi
+        if path_is_within "$home_root" "$candidate" || path_is_within "$host_home" "$candidate"; then
+            bind_problem="$spec is or contains your home directory, which holds credentials and harness state. Bind a subdirectory instead."
+            return 1
+        fi
+    done
+    for root in "${excluded_work_roots[@]}"; do
+        if path_is_within "$resolved" "$root" || path_is_within "$root" "$resolved"; then
+            bind_problem="$spec is or contains the excluded directory $root"
+            return 1
+        fi
+    done
+
+    # 4. Mount read-only.
+    user_bind_seen["$logical"]=1
+    user_bind_opts+=(--bind "${resolved}:${logical}:ro")
+    user_bind_dirs+=("$logical")
+    if [[ "$resolved" != "$logical" && -z "${user_bind_seen[$resolved]:-}" ]]; then
+        user_bind_seen["$resolved"]=1
+        user_bind_opts+=(--bind "${resolved}:${resolved}:ro")
+        user_bind_dirs+=("$resolved")
+    fi
+    bind_logical="$logical"
+}
+
+for user_bind_spec in "${user_bind_specs[@]}"; do
+    user_bind_status=0
+    add_readonly_bind "$user_bind_spec" || user_bind_status=$?
+    case "$user_bind_status" in
+        0) echo "Binding read-only: $bind_logical" >&2 ;;
+        2) echo "Note: $user_bind_spec is already available inside the container; --bind skipped." >&2 ;;
+        *) echo "Error: --bind refused: $bind_problem" >&2
+           exit 1 ;;
+    esac
+done
+
+for group_name in $group_output; do
+    for storage_base in "${storage_bases[@]}"; do
+        group_shared_dir="${storage_base}/${group_name}/shared"
+        [[ -d "$group_shared_dir" ]] || continue
+        user_bind_status=0
+        add_readonly_bind "$group_shared_dir" || user_bind_status=$?
+        case "$user_bind_status" in
+            0) echo "Binding read-only: $bind_logical (group shared directory)" >&2 ;;
+            2) ;;
+            *) echo "Note: group shared directory not bound: $bind_problem" >&2 ;;
+        esac
+    done
+done
+# --- END user binds ---
+
 if ! command -v apptainer >/dev/null 2>&1; then
     echo "Error: apptainer is not available. Load the Apptainer module first." >&2
     exit 1
@@ -1115,6 +1330,7 @@ fi
 bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
 
 bind_opts+=("${configured_bind_opts[@]}")
+bind_opts+=("${user_bind_opts[@]}")
 
 # Remove host-controlled Apptainer mechanisms that can add mounts or inject
 # container environment variables. In particular, APPTAINER_BIND/BINDPATH/MOUNT
@@ -1134,6 +1350,12 @@ unset \
 
 client_env_opts=()
 client_args=()
+
+# Tell every harness which directories the user bound read-only at launch
+# (colon-separated; --bind refuses paths containing ':').
+if (( ${#user_bind_dirs[@]} > 0 )); then
+    client_env_opts+=(--env "YCRC_READONLY_BINDS=$(IFS=:; echo "${user_bind_dirs[*]}")")
+fi
 
 # Reintroduce only the controlled in-container ssh-agent socket. Users without
 # an active ssh-agent simply receive no SSH_AUTH_SOCK inside the container.
@@ -1173,6 +1395,12 @@ case "$agent" in
             --env "CLAUDE_CODE_EFFORT_LEVEL=${YCRC_CLAUDE_EFFORT:-xhigh}"
             --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_CONTEXT}"
         )
+        # Claude's file tools only work in its working directory and the
+        # directories it is given. The = form keeps --add-dir, which takes
+        # several values, from consuming the user's prompt.
+        for user_bind_dir in "${user_bind_dirs[@]}"; do
+            client_args+=("--add-dir=${user_bind_dir}")
+        done
         ;;
     codex)
         client_bin=codex
