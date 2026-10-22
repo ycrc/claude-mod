@@ -9,8 +9,9 @@ From: {{ base }}
 %post
     set -eux
 
-    # Pinned to the release validated against the YCRC-local provider.
-    npm install -g @earendil-works/pi-coding-agent@0.85.1
+    # Unpinned, like the other harnesses: images/build.sh records the version
+    # that shipped in versions.txt.
+    npm install -g @earendil-works/pi-coding-agent
     npm cache clean --force
 
 %test
@@ -18,6 +19,11 @@ From: {{ base }}
     /usr/local/libexec/coding-agents-base-test.sh
     command -v pi
     pi --version
+    # The launcher links Pi's bundled subagent extension from here
+    # (YCRC_PI_SUBAGENT_EXT_DIR in coding-agents-provider.conf).
+    ext=/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/examples/extensions/subagent
+    test -f "$ext/index.ts"
+    test -f "$ext/agents.ts"
 
 %labels
     Author YCRC
