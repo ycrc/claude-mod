@@ -1,0 +1,35 @@
+easyblock = 'Bundle'
+
+name = 'ycrc-llm'
+version = '1.0'
+
+homepage = 'https://docs.ycrc.yale.edu/ai/hosted-model-api/'
+description = """Settings for calling the YCRC-hosted language model from your own scripts and
+batch jobs with the OpenAI or Anthropic Python packages, curl, or other OpenAI-compatible
+tools. Sets the endpoint and your <netid>.api key; installs no software."""
+
+toolchain = SYSTEM
+
+# The inference gateway's address, kept in one place. Change it here (for
+# example to a DNS alias) and install a new version to move every script.
+local_endpoint = 'http://a1127u31n01.mghpcc.ycrc.yale.edu:8008'
+
+# Lmod code, so the key is built from the real account name at load time
+# (`id -un`, not the mutable $USER), as the coding-agents launcher does.
+# pushenv rather than setenv: unloading restores any value the user had
+# before, such as their own OpenAI key, instead of leaving it unset.
+modluafooter = """
+local netid = (capture("id -un") or ""):gsub("%%s+", "")
+pushenv("OPENAI_BASE_URL", "%(endpoint)s/v1")
+pushenv("ANTHROPIC_BASE_URL", "%(endpoint)s")
+pushenv("OPENAI_API_KEY", netid .. ".api")
+pushenv("ANTHROPIC_API_KEY", netid .. ".api")
+""" % {'endpoint': local_endpoint}
+
+modloadmsg = (
+    "\nYCRC-hosted model settings for your scripts: OPENAI_BASE_URL, ANTHROPIC_BASE_URL,\n"
+    "OPENAI_API_KEY and ANTHROPIC_API_KEY. Use model ycrc-local (or ycrc-local-think).\n"
+    "Run your code inside a Slurm job. Docs: https://docs.ycrc.yale.edu/ai/hosted-model-api/\n"
+)
+
+moduleclass = 'tools'

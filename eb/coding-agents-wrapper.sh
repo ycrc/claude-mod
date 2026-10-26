@@ -185,8 +185,17 @@ done
 while IFS= read -r exported_env_name; do
     for sensitive_pattern in "${sensitive_env_patterns[@]}"; do
         if [[ "$exported_env_name" == $sensitive_pattern ]]; then
+            # Always removed, but not worth a warning: the user's own
+            # "<netid>.api" key from the ycrc-llm module (not a secret), and
+            # Lmod's __LMOD_STACK_* records of values pushenv replaced (which
+            # may hold a real key, so they are removed too).
+            quiet=false
+            if [[ "${!exported_env_name}" == "${user_name}.api" || "$exported_env_name" == __LMOD_STACK_* ]]; then
+                quiet=true
+            fi
             unset "$exported_env_name"
-            printf 'Warning: unset sensitive environment variable: %s\n' "$exported_env_name" >&2
+            [[ "$quiet" == true ]] ||
+                printf 'Warning: unset sensitive environment variable: %s\n' "$exported_env_name" >&2
             break
         fi
     done
