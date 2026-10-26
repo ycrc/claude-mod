@@ -243,12 +243,14 @@ VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "ope
 # request is still attributed to a netid (verified by the node-ownership check
 # when that is on), so evasion is a policy matter, not an anonymous one.
 #
-# Scripts are batch-shaped, so they get their own in-flight cap inside the
-# user's share: a 10,000-item job cannot take all of a user's slots away from
-# their interactive sessions. 0 disables the separate cap.
+# Scripts are batch-shaped, so they may hold only API_SHARE of the user's
+# current share (rounded down, at least 1): a 10,000-item job cannot take every
+# slot from the same user's interactive sessions. It scales with load -- with
+# the defaults, 24 of 32 on a quiet engine, 6 of 8 when it is busy -- so
+# batches run fast when there is room. 0 disables the separate cap.
 API_AGENT = "api"
 API_ACCESS = os.environ.get("PROXY_API_ACCESS", "0") == "1"
-API_MAX_INFLIGHT = int(os.environ.get("PROXY_API_MAX_INFLIGHT", "4"))
+API_SHARE = min(max(float(os.environ.get("PROXY_API_SHARE", "0.75")), 0.0), 1.0)
 if API_ACCESS:
     VALID_AGENTS = VALID_AGENTS | {API_AGENT}
 # Optional link to user documentation for scripted access, added to refusals.
@@ -714,14 +716,17 @@ class UserSlots:
     of users seen. Each key's waiters are served FIFO.
     """
 
-    def __init__(self, floor, budget, max_queue, timeout):
+    def __init__(self, floor, budget, max_queue, timeout, cap_fn=None):
         self.floor, self.budget = floor, budget
         self.max_queue, self.timeout = max_queue, timeout
+        self.cap_fn = cap_fn   # overrides floor/budget when set
         self._keys = {}    # key -> {"held": int, "queue": deque of futures}
         # Throttling since the last summary: key -> [queued, rejected, max wait]
         self.stats = {}
 
     def cap(self):
+        if self.cap_fn is not None:
+            return self.cap_fn()
         if self.budget <= 0:
             return self.floor
         return max(self.floor, self.budget // max(len(self._keys), 1))
@@ -799,10 +804,11 @@ class UserSlots:
 
 _user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), ENGINE_BUDGET,
                         USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
-# A fixed cap per netid for "<netid>.api" traffic, taken before the user's
-# share, so scripts hold at most API_MAX_INFLIGHT of it.
-_api_slots = UserSlots(max(API_MAX_INFLIGHT, 1), 0,
-                       USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
+# A per-netid cap for "<netid>.api" traffic, taken before the user's share and
+# recomputed from it on every check, so it follows the number of active users.
+# Script requests already running are never interrupted when it shrinks.
+_api_slots = UserSlots(1, 0, USER_MAX_QUEUE, USER_QUEUE_TIMEOUT,
+                       cap_fn=lambda: max(1, int(_user_slots.cap() * API_SHARE)))
 
 
 def limit_key(netid, remote):
@@ -1240,7 +1246,7 @@ async def handle(request: web.Request):
                 return api_harness_response(request.rel_url.path)
         try:
             key = limit_key(netid, request.remote)
-            if key is not None and agent == API_AGENT and API_MAX_INFLIGHT > 0:
+            if key is not None and agent == API_AGENT and API_SHARE > 0:
                 api_key = key
         except Exception:
             key = api_key = None     # limiting must never break inference
@@ -1401,8 +1407,8 @@ async def on_startup(app):
     log(f"identity enforcement: {'ON' if REQUIRE_IDENTITY else 'off'}"
         + (f", exempt {sorted(IDENTITY_EXEMPT_ADDRS)}" if REQUIRE_IDENTITY else ""))
     log(f"scripted access (<netid>.{API_AGENT}): "
-        + (f"ON, at most {API_MAX_INFLIGHT} in flight per user"
-           if API_ACCESS and API_MAX_INFLIGHT > 0
+        + (f"ON, scripts may hold {API_SHARE:.0%} of a user's share"
+           if API_ACCESS and API_SHARE > 0
            else "ON, no separate cap" if API_ACCESS else "off"))
     log(f"node-ownership check: {NODE_CHECK}"
         + (f" -> {NODE_CHECK_LOG}" if NODE_CHECK in ("flag", "enforce") else ""))
