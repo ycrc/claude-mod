@@ -1,4 +1,4 @@
-# Bouchet Coding Agents 1.2
+# Bouchet Coding Agents 1.3
 
 
 ## Choosing a harness
@@ -33,7 +33,7 @@ From 1.1, `local-coding-agents` is a bundle that loads four hidden modules, one
 per harness: `claude-local`, `codex-local`, `copilot-local` and `pi-local`. Each
 has its own image and launcher, so a harness can be upgraded without touching
 the others. They do not appear in `module avail`, but can be loaded directly for
-testing, e.g. `module load pi-local/.1.2`.
+testing, e.g. `module load pi-local/.1.3`.
 
 All four clients share the same outer Apptainer containment and Bouchet storage policy. The launcher removes inherited credential-like environment variables and host-controlled Apptainer mount/environment overrides before injecting administrator-controlled local-model settings from an installed read-only provider configuration.
 
@@ -100,7 +100,7 @@ Users keep their own skills and instruction files, and the configuration import 
 
 ## Persistent state
 
-The wrapper creates only explicitly approved user state/package directories before processing binds, including Claude, Codex, Copilot, Pi, Conda, and R state. The user's full home directory is never bound: inside the container `$HOME` is a small (64 MB) temporary filesystem, with only the approved directories mounted into it. Because renv's default package cache (`~/.cache/R/renv`) would land there and be lost, the launcher sets `RENV_PATHS_CACHE=~/R/renv-cache` (created mode 0700 under the persistent `~/R` bind) unless the user has set `RENV_PATHS_CACHE` themselves. Host `/tmp` and `/var/tmp` are also not bound; `--contain` supplies isolated temporary directories instead.
+The wrapper creates only explicitly approved user state/package directories before processing binds, including Claude, Codex, Copilot, Pi, Conda, and R state. The user's full home directory is never bound: inside the container `$HOME` is a small (64 MB) temporary filesystem, with only the approved directories mounted into it. Because renv's default package cache (`~/.cache/R/renv`) would land there and be lost, the launcher sets `RENV_PATHS_CACHE=~/R/renv-cache` (created mode 0700 under the persistent `~/R` bind) unless the user has set `RENV_PATHS_CACHE` themselves. Host `/tmp` and `/var/tmp` are not bound either. Because `--contain` would put `/tmp` in the same 64 MB temporary filesystem, where pip and similar tools fail with ENOSPC, the launcher binds a private directory created on the node's local disk (`mktemp -d` under the host `TMPDIR`, mode 0700) over the container's `/tmp`, sets `TMPDIR=/tmp` and, unless the user has set it, `XDG_CACHE_HOME=/tmp/.cache`, and removes the directory when the session ends.
 
 ### Importing users' own configuration
 
