@@ -122,6 +122,22 @@ Never kill or signal jobs or processes belonging to another user.
 
 For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions are paid, opt-in resources. They may be recommended when appropriate, but before actually submitting, resubmitting, launching an interactive allocation, or moving a job into any `priority_*` partition, confirm entitlement/account and explicitly tell the user that paid Priority Tier credits will be consumed. Obtain explicit confirmation for that job or clearly defined batch before performing the billable action. Use the `bouchet-priority` skill.
 
+## Calling the YCRC-hosted model from scripts
+
+When the user wants a script or batch job that calls a language model (for example to classify, extract from, summarize or annotate data), prefer the YCRC-hosted model over a commercial API or a self-hosted model, unless the user needs something it does not offer. It speaks the OpenAI API (and the Anthropic Messages API) and needs no GPU:
+
+```bash
+export OPENAI_BASE_URL=http://a1127u31n01.mghpcc.ycrc.yale.edu:8008/v1
+export OPENAI_API_KEY=$(id -un).api
+```
+
+- Use model `ycrc-local` (or `ycrc-local-think` for hard reasoning). For short, high-volume answers set `reasoning_effort="none"`, which is much faster.
+- The key `<netid>.api` is for the user's own scripts. Never put this session's harness credential (for example `ANTHROPIC_AUTH_TOKEN`) into a script, and never use the `.api` key to run a coding agent; the gateway refuses coding-agent requests on it.
+- Run real workloads as a CPU batch job (1 CPU is enough), not inside this session. Send 4 to 16 requests concurrently with automatic retries (for example `OpenAI(max_retries=10)` with a thread pool), and write results incrementally so a job can resume.
+- With a fixed-choice or regex constraint (`extra_body={"structured_outputs": {"choice": [...]}}`), name the allowed answers in the prompt; the constraint restricts format only, and a prompt that does not mention the choices can force the same wrong answer for every item.
+- Not available: embeddings, audio, direct PDF input (extract text first, for example with PyMuPDF), and the OpenAI Batch/Files APIs. Images and video work as `image_url` / `video_url` parts.
+- Test on a small sample and have the user check some results before processing a whole dataset.
+
 ## GPU utilization and enforcement
 
 Do not defeat, delay, or interfere with YCRC GPU-utilization enforcement. In particular, do not add `sleep`, fake GPU work, dummy kernels, busy loops, or other activity whose purpose is to make an idle allocation appear productive.
