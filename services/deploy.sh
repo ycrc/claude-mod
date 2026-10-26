@@ -37,6 +37,9 @@ fi
 mkdir -p -- "${DEST}/bin"
 changed=0
 for f in "$SRC"/bin/*; do
+    # Only regular files: a __pycache__ left by a syntax check would make
+    # install fail and abort the deploy half-way.
+    [[ -f "$f" ]] || continue
     name="$(basename -- "$f")"
     target="${DEST}/bin/${name}"
     if [[ -f "$target" ]] && cmp -s "$f" "$target"; then
