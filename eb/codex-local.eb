@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'codex-local'
-version = '1.3'
+version = '1.4'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -27,14 +27,14 @@ sources = [
 ]
 checksums = [
     {'coding-agents-codex.sif': 'bb610613965ba4a055f63647e7a31d3620abc8dbbdf71561da35a8c58840a1f0'},
-    {'coding-agents-wrapper.sh': 'd0649d180385c832e39a92779278f2f0878618de6a51007cff6a6770e5dab94b'},
+    {'coding-agents-wrapper.sh': '302aeb2445a220f10c41613bf8c486640011755d8424b2ab2208e0c9eedf0fd5'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
     {'codex-config.toml': '129402ab391656099732a273af175a5e7ce6aa1daedb1fcb2af896e33c12dbe2'},
-    {'coding-agents-site.tar.gz': '58ee9b48697678445422cabb8cabf20f9628d672e3740f02edd91771c653ce9c'},
+    {'coding-agents-site.tar.gz': 'f53997117736fe14407ec03619cfd956ed04e62fc55ee87d75909a1054f21037'},
 ]
 
 postinstallcmds = [
