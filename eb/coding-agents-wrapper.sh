@@ -107,7 +107,8 @@ fi
 
 if [[ -z "${SLURM_JOB_ID:-}" || -z "${SLURM_JOB_NODELIST:-}" ]]; then
     echo "Error: $agent must be launched from within a Slurm compute allocation." >&2
-    echo "Allocate a compute node and run $agent there (for example with srun --pty bash)." >&2
+    echo "Start a session in the agent partition and run $agent there, for example:" >&2
+    echo "  salloc -p agent --mem=8G -t 8:00:00" >&2
     exit 1
 fi
 
@@ -185,7 +186,7 @@ while IFS= read -r exported_env_name; do
     for sensitive_pattern in "${sensitive_env_patterns[@]}"; do
         if [[ "$exported_env_name" == $sensitive_pattern ]]; then
             unset "$exported_env_name"
-            printf 'Warning: unset sensitive environment variable: %s\n' "$exported_env_name"
+            printf 'Warning: unset sensitive environment variable: %s\n' "$exported_env_name" >&2
             break
         fi
     done
@@ -277,7 +278,7 @@ fi
 agent_model="$base_model"
 if [[ "${YCRC_THINKING:-0}" == "1" && -n "${YCRC_AGENT_THINK_SUFFIX:-}" ]]; then
     agent_model="${base_model}${YCRC_AGENT_THINK_SUFFIX}"
-    printf 'Extended reasoning enabled for this session (model: %s).\n' "$agent_model"
+    printf 'Extended reasoning enabled for this session (model: %s).\n' "$agent_model" >&2
 fi
 
 # Persistent client state directories. They are deliberately separate from
@@ -1320,6 +1321,7 @@ fi
 client_ssh_auth_sock=""
 temporary_ssh_agent_pid=""
 temporary_ssh_agent_dir=""
+session_tmp_dir=""
 
 cleanup_temporary_ssh_agent() {
     if [[ -n "$temporary_ssh_agent_pid" ]]; then
@@ -1330,7 +1332,29 @@ cleanup_temporary_ssh_agent() {
         rm -rf -- "$temporary_ssh_agent_dir"
     fi
 }
-trap cleanup_temporary_ssh_agent EXIT HUP INT TERM
+
+cleanup_session() {
+    cleanup_temporary_ssh_agent
+    if [[ -n "$session_tmp_dir" ]]; then
+        # Some tools (Go's module cache, for example) leave read-only
+        # directories that rm -rf alone cannot remove.
+        chmod -R u+w -- "$session_tmp_dir" 2>/dev/null || true
+        rm -rf -- "$session_tmp_dir"
+    fi
+}
+trap cleanup_session EXIT HUP INT TERM
+
+# Session scratch. With --contain, Apptainer puts /tmp and the container home
+# in its session directory, which apptainer.conf caps at 64 MB, so pip, conda
+# and similar tools fail with ENOSPC as soon as they unpack or cache anything.
+# Bind a private, disk-backed host directory over /tmp instead (TMPDIR and the
+# per-user cache are pointed at it below); it is removed when the session ends.
+if session_tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/ycrc-agent-tmp.XXXXXX")"; then
+    bind_opts+=(--bind "${session_tmp_dir}:/tmp")
+else
+    session_tmp_dir=""
+    echo "Warning: could not create a session temporary directory; /tmp in the agent is limited to 64 MB." >&2
+fi
 
 if [[ -n "$host_ssh_auth_sock" && -S "$host_ssh_auth_sock" ]]; then
     bind_opts+=(--bind "${host_ssh_auth_sock}:/run/ycrc-agent/ssh.sock")
@@ -1409,6 +1433,17 @@ if [[ -z "${RENV_PATHS_CACHE:-}" ]]; then
     renv_cache_dir="${r_library_dir}/renv-cache"
     if mkdir -p -m 0700 -- "$renv_cache_dir"; then
         client_env_opts+=(--env "RENV_PATHS_CACHE=${renv_cache_dir}")
+    fi
+fi
+
+# Send temporary files and the per-user cache (pip, matplotlib, Hugging Face,
+# uv, ...) to the disk-backed session /tmp rather than the 64 MB container
+# home. TMPDIR is always replaced: an inherited host value usually names a path
+# that does not exist inside the container. An explicit XDG_CACHE_HOME is kept.
+if [[ -n "$session_tmp_dir" ]]; then
+    client_env_opts+=(--env "TMPDIR=/tmp")
+    if [[ -z "${XDG_CACHE_HOME:-}" ]]; then
+        client_env_opts+=(--env "XDG_CACHE_HOME=/tmp/.cache")
     fi
 fi
 
@@ -1562,12 +1597,16 @@ client_status=$?
 if [[ -n "${YCRC_AGENT_USAGE_ENDPOINT:-}" ]] && command -v curl >/dev/null 2>&1; then
     {
         session_end="$(date +%s)"
+        # The module installs into <name>/<version>/, so the install directory
+        # names the version; a hard-coded string went stale across releases.
+        wrapper_version="$(basename -- "$launcher_dir")"
+        [[ "$wrapper_version" =~ ^[0-9][0-9A-Za-z.+_-]*$ ]] || wrapper_version="unknown"
         printf -v usage_record \
-            '{"netid":"%s","uid":%s,"agent":"%s","cluster":"%s","model":"%s","slurm_job":"%s","node":"%s","start_epoch":%s,"end_epoch":%s,"duration_s":%s,"exit":%s,"wrapper":"1.1"}' \
+            '{"netid":"%s","uid":%s,"agent":"%s","cluster":"%s","model":"%s","slurm_job":"%s","node":"%s","start_epoch":%s,"end_epoch":%s,"duration_s":%s,"exit":%s,"wrapper":"%s"}' \
             "$user_name" "$(id -u)" "$agent" "${YCRC_CLUSTER:-unknown}" \
             "${YCRC_AGENT_MODEL:-unknown}" "${SLURM_JOB_ID:-}" "$host_name" \
             "$session_start" "$session_end" "$((session_end - session_start))" \
-            "$client_status"
+            "$client_status" "$wrapper_version"
         curl -sS -X POST \
             --connect-timeout 1 --max-time 3 \
             -H 'Content-Type: application/json' \
