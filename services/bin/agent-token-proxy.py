@@ -254,10 +254,12 @@ if API_ACCESS:
 # Optional link to user documentation for scripted access, added to refusals.
 API_DOCS_URL = os.environ.get("PROXY_API_DOCS_URL", "").strip()
 API_HARNESS_MESSAGE = os.environ.get("PROXY_API_HARNESS_MESSAGE") or (
-    "This request looks like a coding agent. Coding agents must run in the "
-    "YCRC sandbox: use module load local-coding-agents (claude, codex, "
-    "copilot, pi). The <netid>.api key is for your own scripts and batch "
-    "jobs. Questions: research.computing@yale.edu")
+    "This request looks like it comes from a coding agent. Coding agents are "
+    "supported through module load local-coding-agents (claude, codex, copilot, "
+    "pi), which runs them in a sandbox that protects your files and "
+    "credentials. The <netid>.api key is for your own scripts and batch jobs. "
+    "If this is a script that was refused by mistake, please tell us at "
+    "research.computing@yale.edu")
 
 # Products that identify themselves in User-Agent (or the X-Title/HTTP-Referer
 # headers some IDE extensions send). Generic HTTP stacks (undici, OpenAI/Python,
@@ -1178,7 +1180,7 @@ def identity_message(request, reason):
            "OPENAI_API_KEY=$(id -un).api (Anthropic SDK: "
            f"ANTHROPIC_BASE_URL=http://{host} and ANTHROPIC_API_KEY=$(id -un).api); "
            f"model ycrc-local, or ycrc-local{THINK_SUFFIX} for extended reasoning. "
-           "Coding agents must use module load local-coding-agents (claude, codex, "
+           "For coding agents, use module load local-coding-agents (claude, codex, "
            "copilot, pi); for Claude Enterprise, module load claude.")
     if API_DOCS_URL:
         msg += f" Docs: {API_DOCS_URL}"
