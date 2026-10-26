@@ -251,15 +251,8 @@ API_ACCESS = os.environ.get("PROXY_API_ACCESS", "0") == "1"
 API_MAX_INFLIGHT = int(os.environ.get("PROXY_API_MAX_INFLIGHT", "4"))
 if API_ACCESS:
     VALID_AGENTS = VALID_AGENTS | {API_AGENT}
-    # The default refusal says direct access is unsupported, which is no
-    # longer true; say instead what a script should send.
-    if not os.environ.get("PROXY_IDENTITY_MESSAGE"):
-        IDENTITY_MESSAGE = (
-            "Missing or unrecognised API key. For your own scripts, use the key "
-            "<netid>.api (for example OPENAI_API_KEY=$(id -un).api) from inside "
-            "a Slurm job. For coding agents, use module load local-coding-agents "
-            "(claude, codex, copilot, pi); for Claude Enterprise, module load "
-            "claude. Questions: research.computing@yale.edu")
+# Optional link to user documentation for scripted access, added to refusals.
+API_DOCS_URL = os.environ.get("PROXY_API_DOCS_URL", "").strip()
 API_HARNESS_MESSAGE = os.environ.get("PROXY_API_HARNESS_MESSAGE") or (
     "This request looks like a coding agent. Coding agents must run in the "
     "YCRC sandbox: use module load local-coding-agents (claude, codex, "
@@ -921,10 +914,12 @@ async def identity_refusal(request):
     netid, agent = parse_identity(request.headers)
     if netid == "unattributed":
         return credential_kind(request.headers)
-    if agent not in VALID_AGENTS:
-        return "unknown-agent"
+    # The account first, so "unknown-agent" always names a real netid (the
+    # refusal message may repeat it back).
     if not await netid_exists(netid):
         return "unknown-netid"
+    if agent not in VALID_AGENTS:
+        return "unknown-agent"
     return None
 
 
@@ -1123,9 +1118,16 @@ async def node_flag_flusher():
 
 
 def node_refusal_response(path, netid, node):
-    msg = (f"This request identifies as {netid}, but {netid} has no running Slurm "
-           f"job on {node}. Use module load local-coding-agents inside your own "
-           "Slurm allocation. Questions: research.computing@yale.edu")
+    if API_ACCESS:
+        msg = (f"This request identifies as {netid}, but {netid} has no running Slurm "
+               f"job on {node}. Run it inside your own Slurm allocation (salloc or "
+               "sbatch) on a compute node: coding agents with module load "
+               f"local-coding-agents, your own scripts with the key {netid}.api. "
+               "Questions: research.computing@yale.edu")
+    else:
+        msg = (f"This request identifies as {netid}, but {netid} has no running Slurm "
+               f"job on {node}. Use module load local-coding-agents inside your own "
+               "Slurm allocation. Questions: research.computing@yale.edu")
     if path.startswith("/v1/messages"):
         payload = {"type": "error", "error": {"type": "permission_error", "message": msg}}
     else:
@@ -1134,12 +1136,62 @@ def node_refusal_response(path, netid, node):
     return web.json_response(payload, status=403)
 
 
-def identity_response(path):
+SAFE_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,20}$")
+SAFE_HOST_RE = re.compile(r"^[A-Za-z0-9.-]+(:\d{1,5})?$")
+
+
+def identity_message(request, reason):
+    """The refusal text for a request without a usable key.
+
+    With scripted access on, it says what was wrong with this key and exactly
+    what to set, for people and for agents writing code on their behalf. Only
+    the netid and a short, plain label are ever echoed back: a malformed key
+    may be a real secret pasted by mistake.
+    """
+    if os.environ.get("PROXY_IDENTITY_MESSAGE") or not API_ACCESS:
+        return IDENTITY_MESSAGE
+    raw = ""
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        raw = auth[7:].strip()
+    raw = raw or (request.headers.get("x-api-key") or "").strip()
+    netid, _, label = raw.partition(".")
+    if reason == "none":
+        problem = "No API key was sent."
+    elif reason == "shared-key":
+        problem = "The old shared key is no longer accepted."
+    elif reason == "unknown-netid":
+        # Not echoed: the "netid" may be some other credential.
+        problem = ("The key must start with your own NetID, and the part before "
+                   "the dot is not an account on this cluster.")
+    elif reason == "unknown-agent" and not label:
+        problem = f"The key needs a label after your NetID, e.g. {netid}.api."
+    elif reason == "unknown-agent" and SAFE_LABEL_RE.match(label):
+        problem = f"'{label}' is not a recognised label in the key {netid}.{label}."
+    elif reason == "unknown-agent":
+        problem = f"The key for {netid} has an unrecognised label after the dot."
+    else:
+        problem = "The API key is not in the form <netid>.<label>."
+    host = request.host if SAFE_HOST_RE.match(request.host or "") else "<this server>"
+    msg = (f"{problem} For your own scripts, run inside a Slurm job (not on a login "
+           f"node) and set OPENAI_BASE_URL=http://{host}/v1 and "
+           "OPENAI_API_KEY=$(id -un).api (Anthropic SDK: "
+           f"ANTHROPIC_BASE_URL=http://{host} and ANTHROPIC_API_KEY=$(id -un).api); "
+           f"model ycrc-local, or ycrc-local{THINK_SUFFIX} for extended reasoning. "
+           "Coding agents must use module load local-coding-agents (claude, codex, "
+           "copilot, pi); for Claude Enterprise, module load claude.")
+    if API_DOCS_URL:
+        msg += f" Docs: {API_DOCS_URL}"
+    return msg + " Questions: research.computing@yale.edu"
+
+
+def identity_response(path, message=None):
+    message = message or IDENTITY_MESSAGE
     if path.startswith("/v1/messages"):
         payload = {"type": "error",
-                   "error": {"type": "permission_error", "message": IDENTITY_MESSAGE}}
+                   "error": {"type": "permission_error", "message": message}}
     else:
-        payload = {"error": {"message": IDENTITY_MESSAGE, "type": "permission_error",
+        payload = {"error": {"message": message, "type": "permission_error",
                              "code": "identity_required"}}
     return web.json_response(payload, status=403)
 
@@ -1152,7 +1204,11 @@ async def handle(request: web.Request):
     if reason:
         note_unattributed(request.remote, request.headers.get("User-Agent"),
                           request.rel_url.path, None, f"{reason}-refused", 0, 0)
-        return identity_response(request.rel_url.path)
+        try:
+            message = identity_message(request, reason)
+        except Exception:
+            message = None     # fall back to the plain refusal
+        return identity_response(request.rel_url.path, message)
     if NODE_CHECK in ("flag", "enforce") and request.rel_url.path.startswith("/v1/"):
         try:
             netid, agent = parse_identity(request.headers)
