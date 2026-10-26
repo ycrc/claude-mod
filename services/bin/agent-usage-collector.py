@@ -63,9 +63,11 @@ MAX_BODY = 8192                 # a session record is ~300 bytes
 MAX_SERIES = 20000              # cardinality guard: netid x agent pairs
 # The four module harnesses, plus claude-mod (the module that drives this
 # local model from commercial Claude; sends "<netid>.claude-mod") and
-# openwebui (the Open OnDemand Open WebUI app; sends "<netid>.openwebui").
-# Must match VALID_AGENTS in agent-token-proxy.py.
-VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "openwebui"))
+# openwebui (the Open OnDemand Open WebUI app; sends "<netid>.openwebui"),
+# and api (researchers' own scripts; sends "<netid>.api", which the gateway
+# accepts only with PROXY_API_ACCESS=1). Must match VALID_AGENTS in
+# agent-token-proxy.py.
+VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "openwebui", "api"))
 NETID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$", re.IGNORECASE)
 MAX_DURATION = 60 * 60 * 24 * 31   # clamp clock skew / bad records
 

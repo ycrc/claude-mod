@@ -230,6 +230,73 @@ NETID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 # "<netid>.openwebui".
 VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "openwebui"))
 
+# Scripted access. "<netid>.api" is the identity for a researcher's own code --
+# the OpenAI or Anthropic SDK, curl, a batch job -- rather than one of the
+# harnesses above. It is accepted only when PROXY_API_ACCESS=1 (otherwise it is
+# an unknown agent and refused like any other under REQUIRE_IDENTITY).
+#
+# The label must not become a way round the module's sandbox, so requests on
+# it that look like a coding agent are refused (see harness_fingerprint): a
+# known harness User-Agent or header, a harness system prompt, or a tool set
+# that both runs shell commands and edits files. This raises the bar rather
+# than proving anything -- a determined user can strip every marker -- but the
+# request is still attributed to a netid (verified by the node-ownership check
+# when that is on), so evasion is a policy matter, not an anonymous one.
+#
+# Scripts are batch-shaped, so they get their own in-flight cap inside the
+# user's share: a 10,000-item job cannot take all of a user's slots away from
+# their interactive sessions. 0 disables the separate cap.
+API_AGENT = "api"
+API_ACCESS = os.environ.get("PROXY_API_ACCESS", "0") == "1"
+API_MAX_INFLIGHT = int(os.environ.get("PROXY_API_MAX_INFLIGHT", "4"))
+if API_ACCESS:
+    VALID_AGENTS = VALID_AGENTS | {API_AGENT}
+    # The default refusal says direct access is unsupported, which is no
+    # longer true; say instead what a script should send.
+    if not os.environ.get("PROXY_IDENTITY_MESSAGE"):
+        IDENTITY_MESSAGE = (
+            "Missing or unrecognised API key. For your own scripts, use the key "
+            "<netid>.api (for example OPENAI_API_KEY=$(id -un).api) from inside "
+            "a Slurm job. For coding agents, use module load local-coding-agents "
+            "(claude, codex, copilot, pi); for Claude Enterprise, module load "
+            "claude. Questions: research.computing@yale.edu")
+API_HARNESS_MESSAGE = os.environ.get("PROXY_API_HARNESS_MESSAGE") or (
+    "This request looks like a coding agent. Coding agents must run in the "
+    "YCRC sandbox: use module load local-coding-agents (claude, codex, "
+    "copilot, pi). The <netid>.api key is for your own scripts and batch "
+    "jobs. Questions: research.computing@yale.edu")
+
+# Products that identify themselves in User-Agent (or the X-Title/HTTP-Referer
+# headers some IDE extensions send). Generic HTTP stacks (undici, OpenAI/Python,
+# python-requests, curl) are deliberately absent: researchers' code uses them.
+HARNESS_UA_RE = re.compile(os.environ.get("PROXY_API_HARNESS_UA") or (
+    r"claude-cli|claude-code|codex|^pi \(|^omp/|copilot|opencode|aider|cline|"
+    r"roo-?code|kilo-?code|continue\.dev|cursor|goose|crush|qwen-code|gemini-cli|"
+    r"openhands|zed/"), re.I)
+# Headers only harnesses send: Codex's originator, Copilot's integration and
+# editor headers.
+HARNESS_HEADERS = ("originator", "copilot-integration-id", "editor-version",
+                   "editor-plugin-version")
+# System prompt openings of the common harnesses.
+HARNESS_PROMPT_RE = re.compile(
+    r"You are Claude Code|Claude Agent SDK|x-anthropic-billing-header|You are a coding agent|"
+    r"interactive CLI tool that helps users with software engineering|"
+    r"GitHub Copilot CLI|You are opencode|You are Cline|You are Roo|You are Kilo|"
+    r"Act as an expert software developer|operating inside pi\b", re.I)
+HARNESS_PROMPT_SCAN = 32768   # characters of system prompt examined
+# A tool set with one of each is a coding agent. Names are compared lower-case,
+# with Anthropic's dated server-tool suffix (bash_20250124) removed.
+SHELL_TOOLS = frozenset((
+    "bash", "shell", "exec_command", "unified_exec", "local_shell", "run_command",
+    "run_shell_command", "execute_command", "terminal", "run_terminal_cmd",
+    "run_in_terminal"))
+EDIT_TOOLS = frozenset((
+    "edit", "multiedit", "write", "apply_patch", "text_editor", "str_replace",
+    "str_replace_editor", "str_replace_based_edit_tool", "create_file",
+    "write_file", "edit_file", "replace_in_file", "write_to_file",
+    "insert_edit_into_file", "notebookedit"))
+DATED_TOOL_RE = re.compile(r"_\d{8}$")
+
 # Token fields across all three wire formats. Matching the individual fields
 # rather than the enclosing object keeps this robust when a usage block is
 # split across chunk boundaries or nested (the Responses API nests
@@ -737,6 +804,10 @@ class UserSlots:
 
 _user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), ENGINE_BUDGET,
                         USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
+# A fixed cap per netid for "<netid>.api" traffic, taken before the user's
+# share, so scripts hold at most API_MAX_INFLIGHT of it.
+_api_slots = UserSlots(max(API_MAX_INFLIGHT, 1), 0,
+                       USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
 
 
 def limit_key(netid, remote):
@@ -748,10 +819,12 @@ def limit_key(netid, remote):
     return netid
 
 
-def busy_response(path, reason):
+def busy_response(path, reason, slots=None):
+    slots = slots or _user_slots
+    kind = "per user for scripts (<netid>.api)" if slots is _api_slots else "per user"
     msg = (f"Too many concurrent requests for this user ({reason}). This "
-           f"shared model currently allows {_user_slots.cap()} at a time per "
-           "user; please retry shortly.")
+           f"shared model currently allows {slots.cap()} at a time {kind}; "
+           "please retry shortly.")
     if path.startswith("/v1/messages"):
         payload = {"type": "error",
                    "error": {"type": "rate_limit_error", "message": msg}}
@@ -853,6 +926,97 @@ async def identity_refusal(request):
     if not await netid_exists(netid):
         return "unknown-netid"
     return None
+
+
+def _tool_names(payload):
+    """Lower-case tool names across the chat, Responses and Messages formats."""
+    names = set()
+    for tool in payload.get("tools") or ():
+        if not isinstance(tool, dict):
+            continue
+        fn = tool.get("function") if isinstance(tool.get("function"), dict) else {}
+        # Anthropic and Responses tools carry "name"; chat tools nest it under
+        # "function"; built-ins (local_shell, bash_20250124) carry only a type.
+        name = tool.get("name") or fn.get("name") or tool.get("type")
+        if isinstance(name, str):
+            names.add(DATED_TOOL_RE.sub("", name.strip().lower()))
+    return names
+
+
+def _system_text(payload):
+    """The start of the system/developer prompt, whichever format carries it."""
+    parts = []
+
+    def add(content):
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+
+    add(payload.get("system"))          # Messages
+    add(payload.get("instructions"))    # Responses
+    turns = payload.get("messages") or payload.get("input")
+    if isinstance(turns, list):
+        for turn in turns:
+            if isinstance(turn, dict) and turn.get("role") in ("system", "developer"):
+                add(turn.get("content"))
+    return "\n".join(parts)[:HARNESS_PROMPT_SCAN]
+
+
+def harness_fingerprint(headers, body):
+    """Why this request looks like a coding agent, or None."""
+    for name in ("User-Agent", "X-Title", "HTTP-Referer"):
+        if HARNESS_UA_RE.search(headers.get(name, "")):
+            return "user-agent"
+    for name in HARNESS_HEADERS:
+        if name in headers:
+            return f"header-{name}"
+    if (headers.get("x-app", "").lower() == "cli"
+            or "claude-code" in headers.get("anthropic-beta", "").lower()):
+        return "header-claude-code"
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    names = _tool_names(payload)
+    if names & SHELL_TOOLS and names & EDIT_TOOLS:
+        return "tools"
+    if HARNESS_PROMPT_RE.search(_system_text(payload)):
+        return "system-prompt"
+    return None
+
+
+_api_refusals_logged = {}   # (netid, reason, user agent) -> monotonic time last logged
+
+
+def note_api_refusal(netid, reason, user_agent, path):
+    """Log a refused api request, at most once per 10 minutes per client kind."""
+    ua = (user_agent or "-").replace("\n", " ").replace("\r", " ")[:200]
+    key = (netid, reason, ua)
+    now = time.monotonic()
+    if now - _api_refusals_logged.get(key, -1e9) < 600:
+        return
+    if len(_api_refusals_logged) > 5000:
+        _api_refusals_logged.clear()
+    _api_refusals_logged[key] = now
+    log(f"api request refused as a coding agent: netid={netid} reason={reason} "
+        f"path={path} user_agent={ua!r}")
+
+
+def api_harness_response(path):
+    if path.startswith("/v1/messages"):
+        payload = {"type": "error",
+                   "error": {"type": "permission_error", "message": API_HARNESS_MESSAGE}}
+    else:
+        payload = {"error": {"message": API_HARNESS_MESSAGE, "type": "permission_error",
+                             "code": "coding_agent_on_api_key"}}
+    return web.json_response(payload, status=403)
 
 
 _host_cache = {}      # client address -> short node name (or None)
@@ -1003,22 +1167,44 @@ async def handle(request: web.Request):
         except Exception:
             pass       # the check must never break legitimate traffic
     key = None
+    api_key = None
     if request.method == "POST" and request.rel_url.path.startswith("/v1/"):
+        netid, agent = parse_identity(request.headers)
+        if API_ACCESS and agent == API_AGENT:
+            try:
+                # aiohttp caches the body, so proxy() reads it again for free.
+                why = harness_fingerprint(request.headers, await request.read())
+            except Exception:
+                why = None     # a failed check must never break a script
+            if why:
+                note_api_refusal(netid, why, request.headers.get("User-Agent"),
+                                 request.rel_url.path)
+                return api_harness_response(request.rel_url.path)
         try:
-            netid, _ = parse_identity(request.headers)
             key = limit_key(netid, request.remote)
+            if key is not None and agent == API_AGENT and API_MAX_INFLIGHT > 0:
+                api_key = key
         except Exception:
-            key = None     # limiting must never break inference
+            key = api_key = None     # limiting must never break inference
     if key is None:
         return await proxy(request)
+    if api_key is not None:
+        try:
+            await _api_slots.acquire(api_key)
+        except UserBusy as exc:
+            return busy_response(request.rel_url.path, str(exc), _api_slots)
     try:
-        await _user_slots.acquire(key)
-    except UserBusy as exc:
-        return busy_response(request.rel_url.path, str(exc))
-    try:
-        return await proxy(request)
+        try:
+            await _user_slots.acquire(key)
+        except UserBusy as exc:
+            return busy_response(request.rel_url.path, str(exc))
+        try:
+            return await proxy(request)
+        finally:
+            _user_slots.release(key)
     finally:
-        _user_slots.release(key)
+        if api_key is not None:
+            _api_slots.release(api_key)
 
 
 async def proxy(request: web.Request):
@@ -1156,6 +1342,10 @@ async def on_startup(app):
         log(f"unattributed-client summaries -> {UNATTRIBUTED_LOG} every {UNATTRIBUTED_FLUSH:.0f}s")
     log(f"identity enforcement: {'ON' if REQUIRE_IDENTITY else 'off'}"
         + (f", exempt {sorted(IDENTITY_EXEMPT_ADDRS)}" if REQUIRE_IDENTITY else ""))
+    log(f"scripted access (<netid>.{API_AGENT}): "
+        + (f"ON, at most {API_MAX_INFLIGHT} in flight per user"
+           if API_ACCESS and API_MAX_INFLIGHT > 0
+           else "ON, no separate cap" if API_ACCESS else "off"))
     log(f"node-ownership check: {NODE_CHECK}"
         + (f" -> {NODE_CHECK_LOG}" if NODE_CHECK in ("flag", "enforce") else ""))
     if NODE_CHECK in ("flag", "enforce"):
