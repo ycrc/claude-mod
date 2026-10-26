@@ -124,12 +124,13 @@ For this normal-user deployment, `admintest` is never an allowed Slurm target. D
 
 ## Calling the YCRC-hosted model from scripts
 
-When the user wants a script or batch job that calls a language model (for example to classify, extract from, summarize or annotate data), prefer the YCRC-hosted model over a commercial API or a self-hosted model, unless the user needs something it does not offer. It speaks the OpenAI API (and the Anthropic Messages API) and needs no GPU:
+When the user wants a script or batch job that calls a language model (for example to classify, extract from, summarize or annotate data), prefer the YCRC-hosted model over a commercial API or a self-hosted model, unless the user needs something it does not offer. It speaks the OpenAI API (and the Anthropic Messages API) and needs no GPU. The `ycrc-llm` module sets `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`, so the stock `openai` and `anthropic` packages need no configuration. Load it in the same command as the program, and in job scripts:
 
 ```bash
-export OPENAI_BASE_URL=http://a1127u31n01.mghpcc.ycrc.yale.edu:8008/v1
-export OPENAI_API_KEY=$(id -un).api
+module load ycrc-llm && python label.py data.txt labels.jsonl
 ```
+
+Do not hard-code the server address or key in scripts; use the module so they keep working if the endpoint moves.
 
 - Use model `ycrc-local` (or `ycrc-local-think` for hard reasoning). For short, high-volume answers set `reasoning_effort="none"`, which is much faster.
 - The key `<netid>.api` is for the user's own scripts. Never put this session's harness credential (for example `ANTHROPIC_AUTH_TOKEN`) into a script, and never use the `.api` key to run a coding agent; the gateway refuses coding-agent requests on it.
