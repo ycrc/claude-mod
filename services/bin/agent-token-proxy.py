@@ -194,7 +194,7 @@ NETID_CACHE_TTL = 3600   # seconds to remember whether a netid exists
 # Slurm allocation (as do the Open OnDemand Open WebUI app and claude-mod), so
 # a genuine request comes from a node where that netid has a running job. This
 # check resolves the client address to its node and asks Slurm who has
-# running jobs there (cached NODE_CACHE_TTL seconds per node, refreshed on a
+# running or completing jobs there (cached NODE_CACHE_TTL seconds per node, refreshed on a
 # miss so a job that has just started is not flagged).
 #   off      no check (default)
 #   flag     serve, but summarise mismatches to NODE_CHECK_LOG
@@ -1044,14 +1044,17 @@ async def client_node(addr):
 
 
 async def node_job_users(node, max_age):
-    """Netids with running jobs on node, at most max_age seconds old; None on failure."""
+    """Netids with running (or completing) jobs on node, at most max_age seconds
+    old; None on failure. Completing jobs count: a job that has just hit its time
+    limit is still the user's for Slurm's KillWait window, and an agent's last
+    requests can arrive then (seen 2026-10-26: bd473's session at timeout)."""
     hit = _node_users.get(node)
     now = time.monotonic()
     if hit and now - hit[1] < max_age:
         return hit[0]
     try:
         proc = await asyncio.create_subprocess_exec(
-            SQUEUE, "-h", "-t", "R", "-w", node, "-o", "%u",
+            SQUEUE, "-h", "-t", "R,CG", "-w", node, "-o", "%u",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         out, _ = await asyncio.wait_for(proc.communicate(), 10)
         if proc.returncode != 0:
