@@ -1,7 +1,7 @@
 easyblock = 'Bundle'
 
 name = 'local-coding-agents'
-version = '1.4'
+version = '1.5'
 
 homepage = 'https://docs.ycrc.yale.edu/ai/aicodingtools/'
 description = """Sandboxed Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, and Pi for YCRC clusters."""
