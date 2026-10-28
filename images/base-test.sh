@@ -12,7 +12,7 @@ command -v node
 command -v python
 python -m pytest --version
 test -f /etc/agents/AGENTS.md
-for skill in storage conda jupyter r slurm parallel job-troubleshooting dsq-arrays gpu \
+for skill in onboarding storage conda jupyter r slurm parallel job-troubleshooting dsq-arrays gpu \
              priority scavenge apptainer alphafold cryosparc mpi scratch modules easybuild-admin; do
     test -f "/etc/agents/skills/bouchet-${skill}/SKILL.md"
 done
