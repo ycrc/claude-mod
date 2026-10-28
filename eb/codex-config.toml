@@ -6,6 +6,11 @@ model_max_output_tokens = 16384
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 
+# Codex 0.165+ would run its app-server as a background daemon, which never
+# becomes ready in the sandbox; keep it in-process (like --no-daemon).
+[features]
+daemon_auto_start = false
+
 [model_providers.bouchet]
 name = "Bouchet Local"
 base_url = "http://a1127u31n01.mghpcc.ycrc.yale.edu:8008/v1"

@@ -784,6 +784,20 @@ if [[ "$agent" == codex ]]; then
     else
         sed -i '/^approval_policy[[:space:]]*=/a sandbox_mode = "danger-full-access"' "$codex_user_config"
     fi
+    # Codex 0.165+ runs its app-server as a background daemon reached through a
+    # Unix socket under CODEX_HOME. In this sandbox the daemon never becomes
+    # ready, so interactive codex exits at startup ("app server did not become
+    # ready"). Keep the app-server in-process, as --no-daemon does, for every
+    # subcommand including resume and fork. The key lives in the [features]
+    # table; add the table if the file has none (a second [features] header
+    # would be invalid TOML).
+    if grep -qE '^[[:space:]]*daemon_auto_start[[:space:]]*=' "$codex_user_config"; then
+        sed -i -E 's|^[[:space:]]*daemon_auto_start[[:space:]]*=.*$|daemon_auto_start = false|' "$codex_user_config"
+    elif grep -qE '^[[:space:]]*\[features\][[:space:]]*$' "$codex_user_config"; then
+        sed -i -E '/^[[:space:]]*\[features\][[:space:]]*$/a daemon_auto_start = false' "$codex_user_config"
+    else
+        printf '\n[features]\ndaemon_auto_start = false\n' >> "$codex_user_config"
+    fi
     # Codex persists its own config.toml, so a user who has run Codex before keeps
     # whatever endpoint they were first given. If the inference service moves to a
     # different node, that stale value silently points them at a host that is no

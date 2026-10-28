@@ -83,6 +83,15 @@ W="$E/think"; mkdir -p "$W"; cd "$W"
 out="$(YCRC_THINKING=1 timeout 600 claude "${xb[@]}" -p "Reply with only the word OK." --dangerously-skip-permissions 2>&1)"; rc=$?
 check "claude with YCRC_THINKING=1 (ycrc-local-think) answers" '[[ $rc == 0 ]] && grep -q "OK" <<< "$out"'
 
+echo "== interactive codex starts"
+# Interactive codex (not codex exec) starts a background app-server and
+# records it with ps; 1.5's first images lacked ps, so codex exited at startup
+# while every exec-based check passed. Run the TUI in a pty for 45 s: still
+# running at the timeout (rc 124) with no startup error means it came up.
+W="$E/codex-tui"; mkdir -p "$W"; cd "$W"
+script -qefc "timeout 45 codex ${xb[*]}" codex-tui.log >/dev/null 2>&1 </dev/null; rc=$?
+check "interactive codex runs (no app-server startup error)" '[[ $rc == 124 ]] && ! grep -qaE "failed to invoke ps|app-server process [0-9]+ startup" codex-tui.log'
+
 echo "== read-only --bind"
 B="$E/bound-data"; mkdir -p "$B"; marker="marker-$RANDOM$RANDOM"; echo "$marker" > "$B/marker.txt"
 check "--bind of home refused before launch"  '! (cd "$E" && timeout 60 pi "${xb[@]}" --bind "$HOME" -p hi >/dev/null 2>&1)'
