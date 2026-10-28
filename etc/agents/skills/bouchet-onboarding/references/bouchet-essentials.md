@@ -4,12 +4,10 @@ Facts and checks for each onboarding step. **Agent** = command in a coding-agent
 
 ## Sandbox caveats (coding agents)
 
-Inside the agent's sandbox:
+Inside the agent's sandbox some commands give wrong or no results. Run those as a step of the session's own Slurm allocation, which runs outside the sandbox and prints straight back:
 
-- `groups` and `id -Gn` show only `<netid> nobody`. Read real groups with:
-  `getent group | awk -F: -v u="$(id -un)" '$4 ~ "(^|,)"u"(,|$)" {print $1}'`
-- `getquota` fails ("missing venv"). Run it as a short job, which runs outside the sandbox:
-  `sbatch --wait --partition=devel --time=5:00 --mem=1G --output=quota.txt --wrap getquota && cat quota.txt`
+- `groups` and `id -Gn` show only `<netid> nobody`. Use `srun --overlap --ntasks=1 groups`.
+- `getquota` fails ("missing venv"). Use `srun --overlap --ntasks=1 getquota`.
 - The home shortcuts (`~/project`, `~/project_pi_*`, ...) are not visible; get real paths from `mydirectories`.
 - `slurm_checkup.sh`, `mydirectories`, `sinfo`, `sacct`, `seff`, `jobstats`, `module` and `sbatch` work normally.
 
@@ -31,7 +29,7 @@ Inside the agent's sandbox:
 ## 2. Storage
 
 - **Check:**
-  - Agent: `mydirectories` (their real paths), plus `getquota` through a job (see above).
+  - Agent: `mydirectories` (their real paths), plus `srun --overlap --ntasks=1 getquota`.
   - Open WebUI: `storage_quota`, `list_directory`.
 - **Home** (`/home/<netid>`): 125 GiB, backed up. Configuration files, scripts, small files.
 - **Project** (`/nfs/roberts/project/<group>/<netid>`, shortcut `~/project`): 4 TiB per group, shared with the group's quota, backed up. Data and results to keep.
@@ -87,7 +85,7 @@ date
 echo "Hello from Bouchet"
 ```
 
-- **Agent, guided:** `sbatch --wait first-job.sh`, then show the output file, `sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS`, and `seff <jobid>`. Explain each field.
+- **Agent, guided:** `sbatch --wait first-job.sh`, then show the output file (if it is not there yet, wait a few seconds: output written on another node can take a moment to appear), `sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS`, and `seff <jobid>`. Explain each field.
 - **Tutorial:** the user writes it; check it with `sbatch --test-only first-job.sh`.
 - **Open WebUI:** check the script with `check_job_script`; the user submits it in a terminal with `sbatch first-job.sh`; then read it back with `recent_jobs` / `job_details` / `job_efficiency`.
 - **Teach the habit:** look at efficiency (`seff`, `jobstats <jobid>`) after real jobs and right-size the next request. Details: `bouchet-job-troubleshooting`.

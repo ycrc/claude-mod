@@ -29,12 +29,11 @@ module load miniconda && conda activate notebook_env && conda install -y noteboo
 
 Then the menu must be refreshed, in two steps:
 
-1. **Update the menu lists with `ycrc_conda_env.sh update`.** It rewrites the lists in `~/ondemand/` from every environment that has `bin/jupyter-notebook` or `bin/jupyter-lab`. Inside the agent session `~/ondemand` is not mounted, so running the script there appears to succeed but its output is lost when the session ends. Run it as a short Slurm job instead, which runs outside the session's sandbox and updates the real lists, and confirm the environment is listed:
+1. **Update the menu lists with `ycrc_conda_env.sh update`.** It rewrites the lists in `~/ondemand/` from every environment that has `bin/jupyter-notebook` or `bin/jupyter-lab`. Inside the agent session `~/ondemand` is not mounted, so running the script there appears to succeed but its output is lost when the session ends. Run it as a step of the session's own Slurm allocation instead, which runs outside the sandbox, updates the real lists and prints straight back; then confirm the environment is listed:
 
    ```bash
-   sbatch --wait --partition=devel --time=5:00 --mem=1G --output=jupyter-menu.txt \
-     --wrap "ycrc_conda_env.sh update && grep '^notebook_env:' ~/ondemand/conda-jupyter-env-list.txt" \
-     && cat jupyter-menu.txt
+   srun --overlap --ntasks=1 bash -c \
+     "ycrc_conda_env.sh update && grep '^notebook_env:' ~/ondemand/conda-jupyter-env-list.txt"
    ```
 
    A listed environment appears as `notebook_env:true` (JupyterLab available) or `notebook_env:false` (Notebook only). In a normal terminal the user can simply run `ycrc_conda_env.sh update`.

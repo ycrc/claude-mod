@@ -70,6 +70,6 @@ Do not answer these from general HPC knowledge; they differ on Bouchet:
 
 ## What you can and cannot do
 
-- **Coding agents:** you can run commands, submit jobs, and write the checklist in the working directory. Some commands do not work inside the agent's sandbox (see `references/bouchet-essentials.md`); run those as a short Slurm job, which runs outside it.
+- **Coding agents:** you can run commands, submit jobs, and write the checklist in the working directory. Some commands do not work inside the agent's sandbox (see `references/bouchet-essentials.md`); run those with `srun --overlap --ntasks=1 <command>`, a step of the session's own allocation that runs outside it.
 - **Open WebUI:** use the read-only Bouchet tools (`storage_quota`, `recent_jobs`, `my_jobs`, `job_details`, `job_efficiency`, `partition_status`, `software_search`, `check_job_script`, `list_directory`). You cannot submit jobs; give the user the job script and the command, then check the job with the tools.
 - **Never possible for you:** uploading SSH keys, approving Duo, changing groups, or clicking in the web portal. Tell the user exactly what to do, with the link.

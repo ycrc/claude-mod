@@ -43,7 +43,7 @@ The exercises' sections map onto the checklist:
 | --- | --- | --- |
 | Navigating and using HPC (pwd, ls, cd, nano, cp, mv, rm) | before 1 | Skip if they already use a Linux shell. |
 | Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/workshop`) | 7 | On Bouchet the data path is `/apps/data/training`. |
-| Understanding quotas (`getquota`) | 2 | In an agent session, verify with the job-based `getquota` from `bouchet-essentials.md`. |
+| Understanding quotas (`getquota`) | 2 | In an agent session, run it as `srun --overlap --ntasks=1 getquota` (see `bouchet-essentials.md`). |
 | Running Python (`salloc`, `module load Python`, the interactive example) | 3, 4 | `module load Python` is fine for these plain scripts; for packages, use Conda (next row). |
 | Installing packages with Miniconda (`conda create -n myenv ...`) | 4 | Follows `bouchet-conda`. |
 | Conda with Jupyter in the portal (`notebook`, `ycrc_conda_env.sh update`) | 6 | Follows `bouchet-jupyter`, including Develop -> Restart Web Server. |
