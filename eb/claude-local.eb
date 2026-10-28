@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'claude-local'
-version = '1.5'
+version = '1.6'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -25,14 +25,14 @@ sources = [
     'coding-agents-site.tar.gz',
 ]
 checksums = [
-    {'coding-agents-claude.sif': '1d9f2016541a26c91479ad1c5462c81550cae4fad28f45f58294ca69aaf37b25'},
-    {'coding-agents-wrapper.sh': '302aeb2445a220f10c41613bf8c486640011755d8424b2ab2208e0c9eedf0fd5'},
+    {'coding-agents-claude.sif': '28160a8134bf7bc6275f61e3606deef023ae6094f356a91c6211073c56ccd6a7'},
+    {'coding-agents-wrapper.sh': '6674761a61f74fc6b335aa9a1ef9b991ed8e198f6bf1738f5e2d388c16a10637'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
-    {'coding-agents-site.tar.gz': '70e9a40f99de7dcea336a72bdc9a131b28aabdf2d63a0ed08bf27f166e5f3567'},
+    {'coding-agents-site.tar.gz': '03e542beee182b393b98746a56c5c02cebc82b13be2f44b24ed423f2c1bd974b'},
 ]
 
 postinstallcmds = [
