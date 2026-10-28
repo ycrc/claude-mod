@@ -34,7 +34,7 @@ checksums = [
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
     {'pi-models.json': '6c7edd5af78d744d08964a710c9642a3d65bd78699f83e30875f2f3a9725fa1a'},
-    {'coding-agents-site.tar.gz': 'ce70a334dbc5178b817d074a0b7128c0ac8751819174388d3eef3d57e0262292'},
+    {'coding-agents-site.tar.gz': '70e9a40f99de7dcea336a72bdc9a131b28aabdf2d63a0ed08bf27f166e5f3567'},
 ]
 
 postinstallcmds = [
