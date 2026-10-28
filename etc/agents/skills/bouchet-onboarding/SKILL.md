@@ -65,7 +65,7 @@ Do not answer these from general HPC knowledge; they differ on Bouchet:
 
 - The login host is `bouchet.ycrc.yale.edu` (not `bouchet.hpc.yale.edu`), with SSH keys uploaded at `https://sshkeys.ycrc.yale.edu/` and Duo.
 - Storage is per group under `/nfs/roberts/...`, not `/project` or `/scratch`. Get the user's real paths from `mydirectories`; never guess them.
-- Python is used through `module load miniconda` and Conda environments; never invent module names (`python/3.11` does not exist). Find real names with `module spider` or `software_search`.
+- Python is used through `module load miniconda` and Conda environments; never invent module names (`python/3.11` does not exist). Find real names with `module avail <name>` or `software_search`.
 - Partition limits change; read them live (`sinfo`, `partition_status`) instead of quoting from memory. Offer only partitions the user can use: not `admintest`, and not `priority*` unless they have Priority Tier credits.
 
 ## What you can and cannot do

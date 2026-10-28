@@ -7,8 +7,9 @@ YCRC uses Lmod modules for centrally managed software.
 Useful commands:
 
 ```bash
-module avail
-module spider <software>
+module avail <software>            # versions you can load (substring match)
+module -r avail '^<software>/'     # only modules with exactly that name
+module spider <package>            # which module provides an R/Python package (extension)
 module help <module/version>
 module show <module/version>
 module list

@@ -60,7 +60,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 ## 4. Software
 
 - **Find software:**
-  - Agent: `module spider <name>` (all versions), then `module spider <name>/<version>` for how to load it.
+  - Agent: `module avail <name>` lists the versions you can load (`module -r avail '^<name>/'` for only that name); `module show <name>/<version>` shows what one sets.
   - Open WebUI: `software_search`.
 - Load in the same command that uses it: `module load <name>/<version> && <command>`. Start a fresh setup with `module reset`, never `module purge`.
 - **Python:** for anything beyond the standard library, use Conda: `module load miniconda && conda create -n myenv python numpy pandas`, then `module load miniconda && conda activate myenv && python script.py`. Plain `module load Python` works for simple scripts.

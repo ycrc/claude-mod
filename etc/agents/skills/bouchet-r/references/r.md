@@ -8,8 +8,8 @@ Useful discovery commands include:
 
 ```bash
 module avail R/4
-module spider R
-module spider <package>
+module -r avail '^R/'      # all R versions
+module spider <package>    # which R module provides a package
 ```
 
 Additional user R packages can be installed into user-writable library locations. If a package requires an external library, first check whether that dependency is provided as a YCRC module.
