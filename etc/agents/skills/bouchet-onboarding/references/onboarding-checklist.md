@@ -30,7 +30,7 @@ When resuming, read the file, give a two-line summary of what's done, and contin
 
 ## Tutorial mode
 
-In tutorial mode the user types the commands. For each step: say what the step teaches, give the command or task, wait for their result, check it (their pasted output, or a command or tool you run to confirm), explain what it shows, then mark the checklist.
+In tutorial mode the user types the commands. For each step: say what the step teaches, give the command or task, wait for their result, check it (their pasted output, or a command or tool you run to confirm), explain what it shows, then mark the checklist. If part of the result is missing (for example they ran one of two commands), ask for it before moving on.
 
 Use YCRC's Intro to HPC material as the curriculum, so what they learn matches YCRC's workshops:
 

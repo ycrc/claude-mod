@@ -31,7 +31,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 - **Check:**
   - Agent: `mydirectories` (their real paths), plus `srun --overlap --ntasks=1 getquota`.
   - Open WebUI: `storage_quota`, `list_directory`.
-- **Home** (`/home/<netid>`): 125 GiB, backed up. Configuration files, scripts, small files.
+- **Home** (`/home/<netid>`; `mydirectories` shows its underlying path, `/nfs/roberts/home/<netid>`, but call it `/home/<netid>`): 125 GiB, backed up. Configuration files, scripts, small files.
 - **Project** (`/nfs/roberts/project/<group>/<netid>`, shortcut `~/project`): 4 TiB per group, shared with the group's quota, backed up. Data and results to keep.
 - **Scratch** (`/nfs/roberts/scratch/<group>/<netid>`, shortcut `~/scratch`): 10 TiB per group, **not backed up**, files older than **30 days are deleted automatically** (a weekly email warns about files due for deletion). Temporary and intermediate files only.
 - **PI groups:** have shortcuts `~/project_pi_<pi>` and `~/scratch_pi_<pi>`.

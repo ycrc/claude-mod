@@ -12,7 +12,7 @@ When one of them conflicts with this policy, follow this policy instead and say 
 
 Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
 
-When a user is new to Bouchet or asks how to get started, use `bouchet-onboarding`. If a request only suggests the user is new (for example they ask what resources to use, or guess paths like `/project`), do what they asked and offer onboarding once, in one sentence.
+When a user is new to Bouchet or asks how to get started, use `bouchet-onboarding`. When a request shows signs that the user is new to Bouchet (for example they guess paths like `/project` or `/scratch`, want to run heavy work on a login node, or ask what resources to use), first do what they asked as usual, then end your reply with one sentence offering a guided getting-started walkthrough (`bouchet-onboarding`). Offer it once per session; if they decline, drop it.
 
 Available skills include:
 - `bouchet-onboarding`
