@@ -44,7 +44,7 @@ scontrol show node <node>
 - Interactive VS Code must use devel partitions such as `devel` or `gpu_devel`.
 - `scavenge`/`scavenge_gpu` are preemptable and are not the normal choice for an interactive debugging session.
 
-For ordinary interactive GPU development, debugging, environment setup, GPU detection, profiling, and scaling tests, use `gpu_devel`.
+For ordinary interactive GPU development, debugging, environment setup, GPU detection, profiling, and scaling tests, use `gpu_devel`. It allows one job per user, and a second submission is rejected at once (`QOSMaxSubmitJobPerUserLimit`): if the user already has one (for example an Open OnDemand session), end it or run the new work as a batch job on a production GPU partition.
 
 ### Correct interactive Slurm forms
 

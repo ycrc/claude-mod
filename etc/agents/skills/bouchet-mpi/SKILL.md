@@ -65,9 +65,9 @@ YCRC also documents `scavenge_mpi` for the same class of MPI workload at lower p
 
 ## mpi4py
 
-- Prefer YCRC module-based OpenMPI/Python/mpi4py software for cluster-aware MPI.
-- YCRC warns that `mpi4py` installed via Conda is unaware of cluster infrastructure and will likely work only on a single compute node.
-- If a user needs a Conda mpi4py environment across multiple nodes, direct them to YCRC at `research.computing@yale.edu` rather than inventing a workaround.
+- Python work on Bouchet uses Conda (see `bouchet-conda`). Multi-node `mpi4py` is the one exception: YCRC warns that `mpi4py` installed via Conda is unaware of cluster infrastructure and will likely work only on a single compute node.
+- For `mpi4py` across nodes, use YCRC's `mpi4py` module, which brings its matching OpenMPI and Python; find the current version with `module avail mpi4py` rather than hard-coding one. For single-node `mpi4py`, Conda is fine.
+- If a multi-node job needs Python packages the module doesn't provide, direct the user to YCRC at `research.computing@yale.edu` rather than inventing a workaround.
 
 ## Apptainer + MPI
 

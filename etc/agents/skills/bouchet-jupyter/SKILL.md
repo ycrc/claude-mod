@@ -15,16 +15,17 @@ The drop-down offers `ycrc_default` (built automatically the first time the user
 
 - Create it with `-n`/`--name`, **never `--prefix`**. The app only finds environments under the Conda envs directory (`~/.conda/envs`, which may be a symlink to project storage).
 - It must contain the **`notebook`** package; without it the environment fails in the app. Add `jupyterlab` too if the user wants the app's **Start JupyterLab** option.
-- Follow the `bouchet-conda` skill for everything else (compute node, `miniconda` as the only software module, Conda before pip, large solves as a batch job).
+- Follow the `bouchet-conda` skill for everything else (an interactive session on a compute node, `miniconda` as the only software module, Conda before pip, large environments in a larger interactive session).
 
-Create a new environment, or add Jupyter to an existing one:
+Create a new environment, or add Jupyter to an existing one (Python packages come from `uv`, as in `bouchet-conda`; if an older environment has no `uv`, run `conda install -y uv` in it first):
 
 ```bash
-module load miniconda && conda create -y -n notebook_env python notebook numpy pandas matplotlib
+module load miniconda && conda create -y -n notebook_env python=3.12 uv \
+  && conda activate notebook_env && uv pip install notebook numpy pandas matplotlib
 ```
 
 ```bash
-module load miniconda && conda activate notebook_env && conda install -y notebook
+module load miniconda && conda activate notebook_env && uv pip install notebook
 ```
 
 Then the menu must be refreshed, in two steps:
@@ -48,7 +49,7 @@ The app starts in the user's home directory. Project and scratch storage are rea
 To run a notebook non-interactively (for long runs, or many parameter sets), use [Papermill](https://papermill.readthedocs.io/), which executes every cell and saves outputs and figures in a new notebook. Install it into the notebook's environment:
 
 ```bash
-module load miniconda && conda activate notebook_env && conda install -y papermill
+module load miniconda && conda activate notebook_env && uv pip install papermill
 ```
 
 Then run the notebook in a batch job sized for the work (see `bouchet-slurm`, and `bouchet-gpu` for GPU notebooks):

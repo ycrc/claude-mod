@@ -15,7 +15,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 
 - **Check:**
   - Agent: groups (see above) and `slurm_checkup.sh`, which lists their Slurm accounts and marks the default.
-  - Open WebUI: ask the user to run `groups` and `slurm_checkup.sh` in a terminal (in the portal: **Clusters -> Shell Access**).
+  - Open WebUI: ask the user to run `groups` and `slurm_checkup.sh` in a terminal (in the portal: **Bouchet Shell Access** in the top menu bar opens one).
 - **Groups:** the primary group is the user's NetID; lab membership shows as `pi_<pi-netid>`. If the lab group is missing, the PI or the user requests it with the Group Change form: https://research.computing.yale.edu/group-change
 - **New accounts:** request at https://research.computing.yale.edu/account-request; the PI confirms by email; creation takes about 1-2 business days and requires Yale's cybersecurity awareness training.
 - **Connecting:**
@@ -42,14 +42,15 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 
 - **Login nodes:** for editing files, managing jobs and light commands only. Anything computational runs on compute nodes through Slurm.
 - **Interactive vs batch:**
-  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell.
+  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell. First check the user's `devel` jobs (`squeue -u $USER -p devel`; an open Open OnDemand session counts): `devel` allows 2, and a third is rejected, so if they already have 2, use `--partition=day`.
+  - Interactive jobs (Open OnDemand sessions and `salloc`) are limited to 4 running at once per user, across all partitions; a fifth waits until one ends. Newcomers often leave portal sessions open, so suggest closing ones they no longer use.
   - Batch: write a script, then `sbatch script.sh`; output goes to a file.
 - **Check partitions live:**
   - Agent: `sinfo -o "%P %l %D %G"` for partitions, time limits, nodes and GPUs.
   - Open WebUI: `partition_status`.
 - **Partitions as documented** (confirm live; offer only what the user can use):
   - `day`: the default; up to 1 day.
-  - `devel`: testing and interactive work; up to 6 hours, 4 CPUs, 60G, 2 jobs per user.
+  - `devel`: testing and interactive work; up to 6 hours, 4 CPUs, 60G, 2 jobs per user, counting open Open OnDemand sessions there.
   - `week`: up to 7 days.
   - GPUs: `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, `gpu_b200`, up to 2 days, request with `--gpus=1`; interactive GPU work uses `gpu_devel`.
   - `scavenge`: free spare capacity, but jobs can be preempted.
@@ -63,13 +64,13 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
   - Agent: `module avail <name>` lists the versions you can load (`module -r avail '^<name>/'` for only that name); `module show <name>/<version>` shows what one sets.
   - Open WebUI: `software_search`.
 - Load in the same command that uses it: `module load <name>/<version> && <command>`. Start a fresh setup with `module reset`, never `module purge`.
-- **Python:** for anything beyond the standard library, use Conda: `module load miniconda && conda create -n myenv python numpy pandas`, then `module load miniconda && conda activate myenv && python script.py`. Plain `module load Python` works for simple scripts.
+- **Python:** use Conda for all Python work (Python and its library modules exist only as dependencies of other software, not for users to load), building the environment in an interactive session (the agent's own session for small environments; see `bouchet-conda`), not in a batch job: `module load miniconda && conda create -y -n myenv python=3.12 uv`, then install packages with `uv` (`module load miniconda && conda activate myenv && uv pip install numpy pandas`) and run with `module load miniconda && conda activate myenv && python script.py`.
 - **R:** modules or Conda; RStudio in the web portal.
 - Details: `bouchet-modules`, `bouchet-conda`, `bouchet-r`.
 
 ## 5. First job
 
-Test script (`first-job.sh`):
+Test script (`first-job.sh`). Keep the first job to this script; don't fold environment builds or real work into it:
 
 ```bash
 #!/bin/bash
@@ -97,7 +98,7 @@ https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the r
 - **Jupyter:** Conda environments need the `notebook` package and registration; see `bouchet-jupyter`.
 - **RStudio Server**, **VS Code**, **Remote Desktop**.
 - **Open WebUI:** a chat assistant on the YCRC-hosted model, with read-only tools for the user's jobs and files.
-- **Shell access, file browser and job viewer** are in the portal's menus.
+- **Bouchet Shell Access** in the top menu bar opens a terminal directly, and the **file browser** is in the menus too. Submit batch jobs with `sbatch` from a shell; don't mention Open OnDemand's Job Composer, which is disabled on Bouchet.
 
 ## 7. Moving data
 
