@@ -41,8 +41,11 @@ From: rockylinux:9
     # Install runtime utilities required by the coding agents. glibc-langpack-en
     # provides the en_US.UTF-8 locale users' sessions inherit; without it every
     # shell warns on stderr, which breaks tools that parse command output
-    # (EasyBuild's `ulimit -u` check fails outright).
+    # (EasyBuild's `ulimit -u` check fails outright). procps-ng provides `ps`,
+    # which interactive Codex (0.165+) calls to record its background
+    # app-server; without it `codex` exits at startup.
     dnf install -y \
+        procps-ng \
         vim \
         bubblewrap \
         fd-find \

@@ -3,6 +3,7 @@
 # this first, then checks its own client.
 set -eu
 
+command -v ps
 command -v fd
 command -v rg
 command -v bwrap
