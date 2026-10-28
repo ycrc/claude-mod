@@ -10,12 +10,13 @@ When one of them conflicts with this policy, follow this policy instead and say 
 
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
+Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
 
 Available skills include:
 - `bouchet-storage`
 - `bouchet-modules`
 - `bouchet-conda`
+- `bouchet-jupyter`
 - `bouchet-r`
 - `bouchet-slurm`
 - `bouchet-parallel`
