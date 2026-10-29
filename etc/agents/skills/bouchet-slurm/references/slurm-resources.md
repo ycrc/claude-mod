@@ -36,7 +36,7 @@ Use Slurm output for live node/partition state. Do not infer that a GPU model do
 | `devel` | 4 CPUs, 60G | 2 submitted | 6 h (default 1 h) |
 | `gpu_devel` | 12 CPUs, 2 GPUs, 256G | 1 running, 1 submitted | 6 h (default 1 h) |
 
-Both default to 5G of memory per CPU. To check the current values:
+Both default to 5G of memory per CPU. The job-count limits are enforced at submission (a job over them is rejected with `QOSMaxSubmitJobPerUserLimit`); the CPU, memory and GPU totals are enforced while jobs run (a job that would exceed them stays pending with `QOSMaxCpuPerUserLimit`, `QOSMaxMemoryPerUser` or similar until the user's other jobs there end). So before requesting resources in these partitions, subtract what the user's existing jobs there already hold. To check the current values:
 
 ```bash
 scontrol show partition devel        # QoS, default time and memory

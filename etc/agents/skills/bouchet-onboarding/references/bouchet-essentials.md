@@ -42,7 +42,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 
 - **Login nodes:** for editing files, managing jobs and light commands only. Anything computational runs on compute nodes through Slurm.
 - **Interactive vs batch:**
-  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell. First check the user's `devel` jobs (`squeue -u $USER -p devel`; an open Open OnDemand session counts): `devel` allows 2, and a third is rejected, so if they already have 2, use `--partition=day`.
+  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell. First check the user's `devel` jobs (`squeue -u $USER -p devel -o '%i %C %m %T'`, or `my_jobs`; an open Open OnDemand session counts). `devel` allows 2 jobs and 4 CPUs and 60G **in total**: a third job is rejected, and a request bigger than what is left (for example 4 CPUs while a 2-CPU session runs) waits pending. Size the request to what is left, or use `--partition=day`.
   - Interactive jobs (Open OnDemand sessions and `salloc`) are limited to 4 running at once per user, across all partitions; a fifth waits until one ends. Newcomers often leave portal sessions open, so suggest closing ones they no longer use.
   - Batch: write a script, then `sbatch script.sh`; output goes to a file.
 - **Check partitions live:**
@@ -50,7 +50,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
   - Open WebUI: `partition_status`.
 - **Partitions as documented** (confirm live; offer only what the user can use):
   - `day`: the default; up to 1 day.
-  - `devel`: testing and interactive work; up to 6 hours, 4 CPUs, 60G, 2 jobs per user, counting open Open OnDemand sessions there.
+  - `devel`: testing and interactive work; up to 6 hours; per user, 2 jobs and 4 CPUs and 60G in total across all of them, open Open OnDemand sessions included.
   - `week`: up to 7 days.
   - GPUs: `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, `gpu_b200`, up to 2 days, request with `--gpus=1`; interactive GPU work uses `gpu_devel`.
   - `scavenge`: free spare capacity, but jobs can be preempted.
