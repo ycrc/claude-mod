@@ -59,10 +59,12 @@ agent_nodes(){
 count_version(){
     local v="$1"; shift
     local pat n c total=0
-    pat="/software/[a-z]*-local/${v//./[.]}/"     # [.] so grep does not match its own arguments
+    # Launchers live in <harness>-local/<version>/ since 1.1, and in
+    # local-coding-agents/<version>/ for the single-module 1.0.
+    pat="/software/([a-z]*-local|local-coding-agents)/${v//./[.]}/"     # [.] so grep does not match its own arguments
     for n in "$@"; do
         c="$(timeout 30 ssh -o BatchMode=yes -o ConnectTimeout=5 "$n" \
-             "ps -eo args | grep -c -- '$pat'; true" 2>/dev/null)" || { echo unknown; return; }
+             "ps -eo args | grep -cE -- '$pat'; true" 2>/dev/null)" || { echo unknown; return; }
         [[ "$c" =~ ^[0-9]+$ ]] || { echo unknown; return; }
         total=$((total + c))
     done
