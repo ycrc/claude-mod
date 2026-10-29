@@ -66,7 +66,7 @@ Spend real time on this step; misplaced data, a full group quota, or results los
   - `day`: the default; up to 1 day.
   - `devel`: testing and interactive work; up to 6 hours; per user, 2 jobs and 4 CPUs and 60G in total across all of them, open Open OnDemand sessions included.
   - `week`: up to 7 days.
-  - GPUs: `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, `gpu_b200`, up to 2 days, request with `--gpus=1`; interactive GPU work uses `gpu_devel`.
+  - GPUs: `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, `gpu_b200`, up to 2 days, request with `--gpus=1`; interactive GPU work uses `gpu_devel` (step 6 covers GPUs).
   - `scavenge`: free spare capacity, but jobs can be preempted.
   - Not for normal users: `admintest`. `priority*` costs Priority Tier credits.
 - **Ask for what the job needs:** CPUs, memory, time. Small, accurate requests start sooner.
@@ -103,9 +103,69 @@ echo "Hello from Bouchet"
 - **Agent, guided:** `sbatch --wait first-job.sh`, then show the output file (if it is not there yet, wait a few seconds: output written on another node can take a moment to appear), `sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS`, and `seff <jobid>`. Explain each field.
 - **Tutorial:** the user writes it; check it with `sbatch --test-only first-job.sh`.
 - **Open WebUI:** check the script with `check_job_script`; the user submits it in a terminal with `sbatch first-job.sh`; then read it back with `recent_jobs` / `job_details` / `job_efficiency`.
-- **Teach the habit:** look at efficiency (`seff`, `jobstats <jobid>`) after real jobs and right-size the next request. Details: `bouchet-job-troubleshooting`.
+### Then: reading a job's efficiency with Jobstats
 
-## 6. Web portal
+The first job is too short for Jobstats (it only reports `seff` numbers for very short jobs), so follow it with this exercise. It deliberately asks for more than it uses, so the user learns to read the report on their own job and right-size the next request. It runs on `day`, so it doesn't compete with sessions already using their `devel` allowance.
+
+`efficiency-test.sh`:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=efficiency-test
+#SBATCH --partition=day
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=15:00
+#SBATCH --output=efficiency-test-%j.out
+
+# Asks for 4 CPUs and 8G but uses them unevenly, so jobstats and its graph
+# have something to show: 4 min on one CPU, 3 min on all four, 3 min idle.
+end=$((SECONDS + 240)); while [ $SECONDS -lt $end ]; do :; done
+for i in 1 2 3 4; do ( end=$((SECONDS + 180)); while [ $SECONDS -lt $end ]; do :; done ) & done; wait
+sleep 180
+echo "done on $(hostname)"
+```
+
+- **Submit it and explain what it does while it runs** (about 10 minutes). Agents can use `sbatch --wait`; in Open WebUI the user submits it with `sbatch efficiency-test.sh` and the model follows it with `my_jobs`.
+- **Read the report together:**
+  - Agent: run `jobstats <jobid>` a minute after it ends.
+  - Open WebUI: use `job_efficiency` for the summary and `job_usage_over_time` to draw the graph.
+  - Point out: about 40% CPU utilization overall against the 90%+ target, memory used versus the 8G requested (almost none), run time versus the time limit, and the Notes section's advice. On the graph, show the three phases: one core, all four, then idle.
+  - Agents can't draw the graph, so give them the link Jobstats prints (the portal's user portal, `.../ycrc_userportal/jobefficiency/<jobid>`).
+- **The lesson:** request what the job uses. Here the right request would be 1 CPU unless the program really uses more, and about 1G of memory. Oversized requests wait longer in the queue and hold resources others could use. Jobstats works on running jobs and portal sessions too, and on GPU jobs it also shows GPU use: YCRC cancels jobs whose GPUs sit idle (see `bouchet-gpu`).
+- **Make it a habit:** check `jobstats <jobid>` after real jobs, and right-size the next request. Details: `bouchet-job-troubleshooting`.
+
+## 6. GPUs (if their work needs them)
+
+Ask first. If their work doesn't use GPUs, say so in a sentence, mark the step skipped, and move on.
+
+- **Check what exists, live:**
+  - Agent: `sinfo -h -o "%P %G" -p gpu,gpu_devel,gpu_rtx6000,gpu_h100,gpu_h200,gpu_b200,scavenge_gpu | sort -u`.
+  - Open WebUI: `partition_status`.
+  - Explain with their output; don't quote GPU inventory from memory.
+- **The GPU partitions** (as of 2026-10; confirm live):
+
+| Partition | GPUs | Use it for |
+| --- | --- | --- |
+| `gpu` | A40, A5000, L40S, RTX 5000 Ada | Most GPU batch jobs. Start here. |
+| `gpu_rtx6000` | RTX Pro 6000 Blackwell | Batch jobs needing that GPU's memory or features. |
+| `gpu_h100`, `gpu_h200`, `gpu_b200` | H100, H200, B200 | Large models and jobs that need the biggest or fastest GPUs; in high demand, so expect longer waits. |
+| `gpu_devel` | several types | Interactive GPU work and short tests: the only partition for interactive GPU sessions, one job per user. |
+| `scavenge_gpu` | spare GPUs of all types | Free spare capacity; jobs can be preempted, so only for work that can restart. |
+
+  Production GPU partitions allow up to 2 days per job (check live). `priority_gpu` exists but costs Priority Tier credits (`bouchet-priority`).
+- **Requesting a GPU:** a GPU partition alone gives no GPU; ask for one.
+  - `--gpus=1` takes any GPU type in the partition.
+  - `--gpus=<type>:1` (for example `--gpus=a40:1`) only when the work needs that type; the type names are in the `sinfo` output above.
+  - GPU memory comes with the GPU type; `--mem` is the node's ordinary memory, not GPU memory.
+  - Start with the smallest GPU that fits the work: big GPUs are scarce and wait longer.
+- **Interactive GPU work:** only in `gpu_devel`, for example `salloc --partition=gpu_devel --gpus=1 --cpus-per-task=4 --mem=16G --time=1:00:00` (or the portal's Jupyter app with a GPU in `gpu_devel`). It allows one job per user, so check they have none first, and `exit` it when done.
+- **Checking the GPU is there:** `nvidia-smi` inside the job; in PyTorch, `torch.cuda.is_available()`. PyTorch installed with `uv pip install torch` in their Conda environment includes CUDA support.
+- **Idle GPUs are cancelled:** YCRC cancels jobs whose GPUs sit unused (see `bouchet-gpu` for the thresholds), so a GPU job must really use its GPU. Jobstats (step 5) shows GPU use for GPU jobs.
+- **A quick look, if they want one:** `sbatch --partition=gpu_devel --gpus=1 --time=5:00 --wrap nvidia-smi` (after checking they have no `gpu_devel` job), then read the output together.
+- Details: `bouchet-gpu`.
+
+## 7. Web portal
 
 https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the resources chosen in the form:
 
@@ -118,7 +178,7 @@ https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the r
 - **Open WebUI:** a chat assistant on the YCRC-hosted model, with read-only tools for the user's jobs and files.
 - **Bouchet Shell Access** in the top menu bar opens a terminal directly, and the **file browser** is in the menus too. Submit batch jobs with `sbatch` from a shell; don't mention Open OnDemand's Job Composer, which is disabled on Bouchet.
 
-## 7. Moving data
+## 8. Moving data
 
 - **From their computer:**
   - `rsync -av data/ <netid>@transfer-bouchet.ycrc.yale.edu:<path>/`, or `scp`, using a path from `mydirectories`.
@@ -126,13 +186,13 @@ https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the r
 - **Large or remote transfers:** Globus.
 - **Small files:** the portal's file browser can upload them.
 
-## 8. AI tools (if relevant)
+## 9. AI tools (if relevant)
 
 - **Local coding agents:** `module load local-coding-agents` in an `agent`-partition session (see the AI Coding Agents docs page for the `salloc` line).
 - **Open WebUI:** the portal app (see 6).
 - **Their own scripts calling the hosted model:** `module load ycrc-llm` sets the endpoint and their key; docs: https://docs.ycrc.yale.edu/ai/hosted-model-api/
 
-## 9. Getting help and training
+## 10. Getting help and training
 
 - **Email:** research.computing@yale.edu (the only YCRC support address).
 - **Office hours** on Zoom, Wednesdays and Thursdays (times and link: https://docs.ycrc.yale.edu/#get-help).

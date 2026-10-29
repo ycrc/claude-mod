@@ -16,12 +16,13 @@ Started: <date>   Last updated: <date>
 - [ ] 2. Storage: home/project/scratch explained with their paths (project <path>, scratch <path>); group quota and file counts checked (<usage>); backups, 30-day scratch purge, lab sharing; layout for their work: <...>
 - [ ] 3. Where work runs: login vs compute; salloc vs sbatch; partitions for their goal: <...>
 - [ ] 4. Software: <modules or Conda environment for their goal>
-- [ ] 5. First job: job <id> on <partition> <state>; efficiency reviewed
-- [ ] 6. Web portal: <apps that fit their goal>
-- [ ] 7. Moving data: <how their data gets to Bouchet, or skipped>
-- [ ] 8. AI tools: <if relevant, or skipped>
-- [ ] 9. Help and training: support email, office hours, Intro to HPC
-- [ ] 10. First real task: <next step and the skill or doc for it>
+- [ ] 5. First job: job <id> on <partition> <state>; efficiency exercise job <id> read with Jobstats (<CPU %>, <memory used of requested>); right-sizing lesson
+- [ ] 6. GPUs: <needed? partitions/types for their work; request form; gpu_devel for interactive; idle-GPU rule — or skipped with reason>
+- [ ] 7. Web portal: <apps that fit their goal>
+- [ ] 8. Moving data: <how their data gets to Bouchet, or skipped>
+- [ ] 9. AI tools: <if relevant, or skipped>
+- [ ] 10. Help and training: support email, office hours, Intro to HPC
+- [ ] 11. First real task: <next step and the skill or doc for it>
 
 Notes:
 - You: <anything only the user can do, e.g. upload an SSH key, request a group change>
@@ -43,12 +44,12 @@ The exercises' sections map onto the checklist:
 | Exercise section | Checklist step | Notes for Bouchet |
 | --- | --- | --- |
 | Navigating and using HPC (pwd, ls, cd, nano, cp, mv, rm) | before 1 | Skip if they already use a Linux shell. |
-| Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/workshop`) | 7 | On Bouchet the data path is `/apps/data/training`. |
+| Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/workshop`) | 8 | On Bouchet the data path is `/apps/data/training`. |
 | Understanding quotas (`getquota`) | 2 | In an agent session, run it as `srun --overlap --ntasks=1 getquota` (see `bouchet-essentials.md`). |
 | Running Python (`salloc`, `module load Python`, the interactive example) | 3, 4 | Teach Conda instead of `module load Python`: Python modules are dependencies of other software, not for users. Do the Miniconda row first and run the example in that environment. |
 | Installing packages with Miniconda (`conda create -n myenv ...`) | 4 | Follows `bouchet-conda`: create the environment with `python` and `uv`, then install packages with `uv pip install`. |
-| Conda with Jupyter in the portal (`notebook`, `ycrc_conda_env.sh update`) | 6 | Follows `bouchet-jupyter`, including Develop -> Restart Web Server. |
+| Conda with Jupyter in the portal (`notebook`, `ycrc_conda_env.sh update`) | 7 | Follows `bouchet-jupyter`, including Develop -> Restart Web Server. |
 
-Then do the first job (step 5) with `first-job.sh` from `bouchet-essentials.md`: the user writes it from the template, you check it with `sbatch --test-only` (or `check_job_script` in Open WebUI), they submit it, and you read the result together.
+Then do the first job (step 5) with `first-job.sh` from `bouchet-essentials.md`: the user writes it from the template, you check it with `sbatch --test-only` (or `check_job_script` in Open WebUI), they submit it, and you read the result together. Then the efficiency exercise (`efficiency-test.sh` in `bouchet-essentials.md`): they submit it, run `jobstats <jobid>` when it ends and paste the report, and you explain it (in Open WebUI, show the usage graph).
 
 Keep the pace theirs: one step at a time, and no long blocks of commands they haven't asked for.

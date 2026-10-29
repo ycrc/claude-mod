@@ -50,12 +50,13 @@ Give every step its turn. Don't fold the remaining steps into a closing summary 
 2. **Storage (take your time here):** this is where new users most often go wrong, so go beyond a list of paths. Show their real directories and quota, then explain each space with their own numbers: what belongs in home, project and scratch, which quotas are shared with the whole group (bytes *and* file counts), what is backed up, the 30-day scratch purge, sharing with their lab, and recovering deleted files. Suggest a layout for their goal (code and data in project, large intermediate files in scratch, results copied back to project) and check they can say where they would put their own data before moving on.
 3. **Where work runs:** login nodes versus compute nodes; interactive (`salloc`) versus batch (`sbatch`); choosing a partition.
 4. **Software:** finding modules; Python and R through Conda.
-5. **First job:** a tiny test job, then reading its result and efficiency.
-6. **Web portal:** the Open OnDemand apps that fit their goal. When they open one (for example Jupyter with their environment), make it hands-on: have them use it for a minute (see `references/bouchet-essentials.md`) and close it when done, rather than treating the launch as the end of the step.
-7. **Moving data:** the transfer node and Globus, if they have data elsewhere.
-8. **AI tools:** coding agents, Open WebUI, and `module load ycrc-llm` for their own scripts, if relevant.
-9. **Getting help and training.**
-10. **Their first real task:** hand off to the topic skills below.
+5. **First job, then efficiency:** a tiny test job, then a ~10-minute exercise job that deliberately over-requests, read together with Jobstats (in Open WebUI, with the usage graph) to learn right-sizing.
+6. **GPUs:** ask whether their work needs GPUs (model training, deep learning, GPU-accelerated software). If it does, cover the GPU partitions and types from live data, how to request a GPU, starting with the smallest GPU that fits, interactive GPU work in `gpu_devel` only, checking the GPU is visible, and that jobs whose GPUs sit idle are cancelled; then route depth to `bouchet-gpu`. If it doesn't, say so in a sentence and mark the step skipped.
+7. **Web portal:** the Open OnDemand apps that fit their goal. When they open one (for example Jupyter with their environment), make it hands-on: have them use it for a minute (see `references/bouchet-essentials.md`) and close it when done, rather than treating the launch as the end of the step.
+8. **Moving data:** the transfer node and Globus, if they have data elsewhere.
+9. **AI tools:** coding agents, Open WebUI, and `module load ycrc-llm` for their own scripts, if relevant.
+10. **Getting help and training.**
+11. **Their first real task:** hand off to the topic skills below.
 
 ## Route details to the topic skills
 
