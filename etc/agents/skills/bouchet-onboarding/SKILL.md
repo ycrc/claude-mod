@@ -74,6 +74,7 @@ Keep onboarding short; when a step needs depth, use the skill for it:
 Do not answer these from general HPC knowledge; they differ on Bouchet:
 
 - Course accounts (username `courseid_netid`) use their own portal, `https://<courseid>.ycrc.yale.edu`, not ood-bouchet, and are deleted one month after the semester's last exam day with no reminder to students. Check the username before giving a portal link (`id -un`; in Open WebUI, the user shown by `storage_quota` or `my_jobs`).
+- Course accounts also have the `education` and `education_gpu` partitions; steer their jobs there first when those have room and the work fits (see `references/bouchet-essentials.md`).
 - The login host is `bouchet.ycrc.yale.edu` (not `bouchet.hpc.yale.edu`), with SSH keys uploaded at `https://sshkeys.ycrc.yale.edu/` and Duo.
 - Storage is per group under `/nfs/roberts/...`, not `/project` or `/scratch`. Get the user's real paths from `mydirectories`; never guess them.
 - Python is used through `module load miniconda` and Conda environments; never invent module names (`python/3.11` does not exist). Find real names with `module avail <name>` or `software_search`.

@@ -23,6 +23,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
   - **SSH:** `ssh courseid_netid@bouchet.ycrc.yale.edu`. Keys already uploaded for a research account carry over.
   - **Storage:** the course has its own project (usually 4 TiB) and scratch (10 TiB), shared by everyone in the course, and each member has a 125 GiB home.
   - **Lifetime:** coursework only, not research. All course accounts and data are deleted one month after the last day of exams, and **students get no reminder**, so anything worth keeping must be downloaded before then. YCRC can help move data to a research account.
+  - **Partitions:** course accounts also have `education` (CPU; per user 4 jobs, 16 CPUs and 200G in total) and `education_gpu` (1 job and 1 GPU per user; RTX 5000 Ada 32 GB, A5000 24 GB or A40 48 GB), each up to 1 day (portal sessions up to 6 hours). Use them first, as in `salloc -p education` or `--partition=education_gpu --gpus=1`, when they have room (`sinfo -p education,education_gpu -o '%P %C %G'`; `partition_status` in Open WebUI) and the work fits. If they're full, or the work needs more (several GPUs, more than 48 GB of GPU memory, more than 16 CPUs or 200G, or more than a day), use the public partitions like everyone else, respectfully.
 - **Connecting:**
   - Web portal: https://ood-bouchet.ycrc.yale.edu (course accounts: `https://<courseid>.ycrc.yale.edu`; no SSH setup needed).
   - SSH from their own computer:
@@ -110,6 +111,8 @@ echo "Hello from Bouchet"
 - **Open WebUI:** check the script with `check_job_script`; the user submits it in a terminal with `sbatch first-job.sh`; then read it back with `recent_jobs` / `job_details` / `job_efficiency`.
 ### Then: reading a job's efficiency with Jobstats
 
+For course accounts, run both test jobs in `education` instead of `devel` and `day` when it has room.
+
 The first job is too short for Jobstats (it only reports `seff` numbers for very short jobs), so follow it with this exercise. It deliberately asks for more than it uses, so the user learns to read the report on their own job and right-size the next request. It runs on `day`, so it doesn't compete with sessions already using their `devel` allowance.
 
 `efficiency-test.sh`:
@@ -164,7 +167,8 @@ Ask first. If their work doesn't use GPUs, say so in a sentence, mark the step s
   - `--gpus=<type>:1` (for example `--gpus=a40:1`) only when the work needs that type; the type names are in the `sinfo` output above.
   - GPU memory comes with the GPU type; `--mem` is the node's ordinary memory, not GPU memory.
   - Start with the smallest GPU that fits the work: big GPUs are scarce and wait longer.
-- **Interactive GPU work:** only in `gpu_devel`, for example `salloc --partition=gpu_devel --gpus=1 --cpus-per-task=4 --mem=16G --time=1:00:00` (or the portal's Jupyter app with a GPU in `gpu_devel`). It allows one job per user, so check they have none first, and `exit` it when done.
+- **Course accounts:** use `education_gpu` first (1 GPU per user; RTX 5000 Ada, A5000 or A40, up to 48 GB of GPU memory) when it has a free GPU and the work fits; otherwise the public GPU partitions below.
+- **Interactive GPU work:** only in `gpu_devel` (course accounts: `education_gpu` first), for example `salloc --partition=gpu_devel --gpus=1 --cpus-per-task=4 --mem=16G --time=1:00:00` (or the portal's Jupyter app with a GPU in `gpu_devel`). It allows one job per user, so check they have none first, and `exit` it when done.
 - **Checking the GPU is there:** `nvidia-smi` inside the job; in PyTorch, `torch.cuda.is_available()`. PyTorch installed with `uv pip install torch` in their Conda environment includes CUDA support.
 - **Idle GPUs are cancelled:** YCRC cancels jobs whose GPUs sit unused (see `bouchet-gpu` for the thresholds), so a GPU job must really use its GPU. Jobstats (step 5) shows GPU use for GPU jobs.
 - **A quick look, if they want one:** `sbatch --partition=gpu_devel --gpus=1 --time=5:00 --wrap nvidia-smi` (after checking they have no `gpu_devel` job), then read the output together.

@@ -33,9 +33,13 @@ scontrol show node <node>
 - Do not assume that all nodes of a GPU type have the same host-memory configuration unless verified from current cluster documentation or Slurm configuration.
 
 
+## Course accounts
+
+Course accounts (username `courseid_netid`) should use `education_gpu` first, for interactive and batch GPU work alike (`salloc -p education_gpu --gpus=1`), when it has a free GPU and the work fits: 1 job and 1 GPU per user, RTX 5000 Ada (32 GB), A5000 (24 GB) or A40 (48 GB), up to 1 day. If it's full, or the work needs several GPUs or more than 48 GB of GPU memory, use the public GPU partitions below.
+
 ## Interactive GPU policy — mandatory
 
-- **Interactive GPU work on Bouchet must use `gpu_devel`.**
+- **Interactive GPU work on Bouchet must use `gpu_devel`** (course accounts: `education_gpu` first, which also allows interactive jobs; see above).
 - Standard Tier production GPU partitions such as `gpu`, `gpu_rtx6000`, `gpu_h100`, `gpu_h200`, and `gpu_b200` are not for interactive allocations. Do not use `salloc`, `srun --pty`, an alternate QOS, or other scheduler options to obtain interactive access in those production GPU partitions.
 - If an interactive request to a production GPU partition is rejected, **do not troubleshoot it by changing QOS or other Slurm settings to make it schedulable**. Direct the user to `gpu_devel`.
 - A command being accepted by Slurm, `sbatch --test-only`, `salloc`, or another scheduler validation does not establish that the workflow complies with YCRC policy.
