@@ -56,7 +56,7 @@ Spend real time on this step; misplaced data, a full group quota, or results los
 
 - **Login nodes:** for editing files, managing jobs and light commands only. Anything computational runs on compute nodes through Slurm.
 - **Interactive vs batch:**
-  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell. First check the user's `devel` jobs (`squeue -u $USER -p devel -o '%i %C %m %T'`, or `my_jobs`; an open Open OnDemand session counts). `devel` allows 2 jobs and 4 CPUs and 60G **in total**: a third job is rejected, and a request bigger than what is left (for example 4 CPUs while a 2-CPU session runs) waits pending. Size the request to what is left, or use `--partition=day`.
+  - Interactive: `salloc --partition=devel --cpus-per-task=1 --mem=4G --time=2:00:00`, then work in that shell. When a session was only for a one-off task (installing packages, a quick test), tell them to `exit` it afterwards; an idle session keeps holding resources and counts toward their limits. First check the user's `devel` jobs (`squeue -u $USER -p devel -o '%i %C %m %T'`, or `my_jobs`; an open Open OnDemand session counts). `devel` allows 2 jobs and 4 CPUs and 60G **in total**: a third job is rejected, and a request bigger than what is left (for example 4 CPUs while a 2-CPU session runs) waits pending. Size the request to what is left, or use `--partition=day`.
   - Interactive jobs (Open OnDemand sessions and `salloc`) are limited to 4 running at once per user, across all partitions; a fifth waits until one ends. Newcomers often leave portal sessions open, so suggest closing ones they no longer use.
   - Batch: write a script, then `sbatch script.sh`; output goes to a file.
 - **Check partitions live:**
@@ -109,7 +109,11 @@ echo "Hello from Bouchet"
 
 https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the resources chosen in the form:
 
-- **Jupyter:** Conda environments need the `notebook` package and registration; see `bouchet-jupyter`.
+- **Jupyter:** Conda environments need the `notebook` package and registration; see `bouchet-jupyter`. Once their environment shows up and they launch a session, walk them through a short hands-on before moving on:
+  1. Open a new notebook and pick their environment's kernel (not `ycrc_default`).
+  2. Run a check cell, for example `import pandas; print(pandas.__version__)`, so they see their own packages.
+  3. Point out that the file browser starts in home, then browse through the `project` shortcut to their onboarding directory and save the notebook there.
+  4. When they're done, stop the session from **My Interactive Sessions** (closing the browser tab doesn't stop it), since it holds resources and counts toward their 4 running interactive jobs.
 - **RStudio Server**, **VS Code**, **Remote Desktop**.
 - **Open WebUI:** a chat assistant on the YCRC-hosted model, with read-only tools for the user's jobs and files.
 - **Bouchet Shell Access** in the top menu bar opens a terminal directly, and the **file browser** is in the menus too. Submit batch jobs with `sbatch` from a shell; don't mention Open OnDemand's Job Composer, which is disabled on Bouchet.

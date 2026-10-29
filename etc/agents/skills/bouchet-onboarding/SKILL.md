@@ -44,12 +44,14 @@ Keep progress in `BOUCHET-ONBOARDING.md` in that project directory, so a later s
 
 For each step: **check** their real state, **explain** what it means for them, **fix or teach**, then **mark** the checklist. Exact commands, tools and facts are in `references/bouchet-essentials.md`; read it before giving any Bouchet-specific fact.
 
+Give every step its turn. Don't fold the remaining steps into a closing summary unless the user asks to speed up, and never drop one silently: if a step doesn't apply, say so in a sentence and mark it `[-]` with the reason.
+
 1. **Access and accounts:** their groups and Slurm accounts (PI groups are `pi_<pi-netid>`); how they connect (portal, SSH with Duo).
 2. **Storage (take your time here):** this is where new users most often go wrong, so go beyond a list of paths. Show their real directories and quota, then explain each space with their own numbers: what belongs in home, project and scratch, which quotas are shared with the whole group (bytes *and* file counts), what is backed up, the 30-day scratch purge, sharing with their lab, and recovering deleted files. Suggest a layout for their goal (code and data in project, large intermediate files in scratch, results copied back to project) and check they can say where they would put their own data before moving on.
 3. **Where work runs:** login nodes versus compute nodes; interactive (`salloc`) versus batch (`sbatch`); choosing a partition.
 4. **Software:** finding modules; Python and R through Conda.
 5. **First job:** a tiny test job, then reading its result and efficiency.
-6. **Web portal:** the Open OnDemand apps that fit their goal.
+6. **Web portal:** the Open OnDemand apps that fit their goal. When they open one (for example Jupyter with their environment), make it hands-on: have them use it for a minute (see `references/bouchet-essentials.md`) and close it when done, rather than treating the launch as the end of the step.
 7. **Moving data:** the transfer node and Globus, if they have data elsewhere.
 8. **AI tools:** coding agents, Open WebUI, and `module load ycrc-llm` for their own scripts, if relevant.
 9. **Getting help and training.**
