@@ -2,17 +2,18 @@
 
 ## Checklist template
 
-Create `BOUCHET-ONBOARDING.md` in the working directory from this template once the user has told you their goal. Fill in what you learn; mark steps `[x]` done, `[ ]` open, `[-]` skipped (say why). Keep notes to one line each, and record anything only the user can do as "You:".
+Create `BOUCHET-ONBOARDING.md` in the user's onboarding directory in project storage (for example `~/project/bouchet-onboarding`; see "Where the work happens" in `SKILL.md`) from this template once the user has told you their goal. Fill in what you learn; mark steps `[x]` done, `[ ]` open, `[-]` skipped (say why). Keep notes to one line each, and record anything only the user can do as "You:".
 
 ```markdown
 # Bouchet onboarding: <netid>
 
 Goal: <what they want to do on Bouchet, in their words>
 Mode: guided | tutorial
+Working directory: <project path>/bouchet-onboarding
 Started: <date>   Last updated: <date>
 
 - [ ] 1. Access and accounts: groups <...>; default Slurm account <...>; connects via <portal/SSH>
-- [ ] 2. Storage: project <path>; scratch <path>; quota checked (<usage>); knows the 30-day scratch purge
+- [ ] 2. Storage: home/project/scratch explained with their paths (project <path>, scratch <path>); group quota and file counts checked (<usage>); backups, 30-day scratch purge, lab sharing; layout for their work: <...>
 - [ ] 3. Where work runs: login vs compute; salloc vs sbatch; partitions for their goal: <...>
 - [ ] 4. Software: <modules or Conda environment for their goal>
 - [ ] 5. First job: job <id> on <partition> <state>; efficiency reviewed

@@ -28,14 +28,28 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
 
 ## 2. Storage
 
-- **Check:**
-  - Agent: `mydirectories` (their real paths), plus `srun --overlap --ntasks=1 getquota`.
+Spend real time on this step; misplaced data, a full group quota, or results lost to the scratch purge are the most common new-user problems.
+
+- **Check, and walk through their own output line by line:**
+  - Agent: `mydirectories` (their real paths), `srun --overlap --ntasks=1 getquota`, and `ls -l ~/.conda` (where Conda environments are stored).
   - Open WebUI: `storage_quota`, `list_directory`.
-- **Home** (`/home/<netid>`; `mydirectories` shows its underlying path, `/nfs/roberts/home/<netid>`, but call it `/home/<netid>`): 125 GiB, backed up. Configuration files, scripts, small files.
-- **Project** (`/nfs/roberts/project/<group>/<netid>`, shortcut `~/project`): 4 TiB per group, shared with the group's quota, backed up. Data and results to keep.
-- **Scratch** (`/nfs/roberts/scratch/<group>/<netid>`, shortcut `~/scratch`): 10 TiB per group, **not backed up**, files older than **30 days are deleted automatically** (a weekly email warns about files due for deletion). Temporary and intermediate files only.
-- **PI groups:** have shortcuts `~/project_pi_<pi>` and `~/scratch_pi_<pi>`.
-- `getquota` shows usage for the group and per user.
+  - In `getquota`, explain the group summary versus their personal usage, usage versus quota for both **bytes and file counts**, and the `Backup` and `Purged` columns. Read the limits from their output; don't quote numbers from memory.
+
+| Space | Path (shortcut) | Quota | Backed up | Use it for |
+| --- | --- | --- | --- | --- |
+| Home | `/home/<netid>` (`mydirectories` shows `/nfs/roberts/home/<netid>`; call it `/home/<netid>`) | 125 GiB and 500,000 files, **per person** | Yes | Configuration files, small scripts, notes. Not research data or day-to-day work. |
+| Project | `/nfs/roberts/project/<group>/<netid>` (`~/project`) | 4 TiB per **group**, plus a group file-count limit | Yes on Bouchet (confirm in `getquota`'s `Backup` column) | Where work happens: code, data, environments and results to keep. |
+| Scratch | `/nfs/roberts/scratch/<group>/<netid>` (`~/scratch`) | 10 TiB per **group**, plus a group file-count limit | **No** | Large temporary and intermediate files. Files older than **30 days are deleted automatically**; a weekly email warns about files due for deletion. Copy anything worth keeping back to project. |
+
+- **Group quotas are shared:** project and scratch quotas (bytes and file counts) are shared by everyone in the group, so one person's millions of small files or forgotten intermediate data can stop the whole lab from writing. `getquota` warns when the group nears a limit.
+- **PI groups and sharing:**
+  - Members of a lab group also have `~/project_pi_<pi>` and `~/scratch_pi_<pi>` shortcuts.
+  - Project and scratch directories are readable by the user's group by default (through the real path, not the shortcut).
+  - A lab can keep shared data and reference files in `/nfs/roberts/project/<group>/shared`.
+  - Never give the home directory group write permission; it breaks logging in.
+- **Conda environments:** `~/.conda/envs` normally points into project storage on Bouchet (check with `ls -l ~/.conda`), so environments count against the group's project quota and file count.
+- **Recovering deleted files:** home and project have snapshots covering at least the last 2 days; see https://docs.ycrc.yale.edu/data/backups/ or contact YCRC for restores. Scratch has no snapshots.
+- **Suggest a layout for their goal,** for example `~/project/<topic>/` with `code/`, `data/` and `results/`, and large intermediate files under `~/scratch/<topic>/`. Then ask where they would put their own data, and correct gently if needed.
 - Details: `bouchet-storage`, `bouchet-scratch`.
 
 ## 3. Where work runs

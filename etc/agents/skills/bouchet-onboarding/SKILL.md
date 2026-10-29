@@ -24,21 +24,28 @@ Before the checklist, ask what they want to do on Bouchet (for example: run Pyth
 
 The user can switch modes at any time.
 
+## Where the work happens
+
+Onboarding work (the checklist, the test job, practice files) lives in a new directory in the user's **project** storage, for example `~/project/bouchet-onboarding` (the real path is under `/nfs/roberts/project/<group>/<netid>`; see `mydirectories`). Home is small and meant for configuration and scripts, so don't put work there; setting this up is also the first practical lesson about where things belong on Bouchet.
+
+- **Coding agents** can only write in the directory the session was started in. Check it (`pwd -P`). If it is not under `/nfs/roberts/project/`, explain why before creating any files and ask the user to restart there: `mkdir -p ~/project/bouchet-onboarding && cd ~/project/bouchet-onboarding`, then start the agent again. A checklist from an earlier session is found there.
+- **Open WebUI** cannot write to the user's directories: give them the `mkdir` command and put files in `~/openwebui-outputs` with the `cp` command to move them into that directory.
+
 ## The checklist file
 
-Keep progress in `BOUCHET-ONBOARDING.md` so a later session, or another tool, can pick up where they left off.
+Keep progress in `BOUCHET-ONBOARDING.md` in that project directory, so a later session, or another tool, can pick up where they left off.
 
 - At the start, look for it in the working directory. If it exists, summarize what is done and continue from the first open step.
 - Otherwise create it from the template in `references/onboarding-checklist.md` once the user has told you their goal, and tell them it exists and what it is for (one sentence).
 - Update it as steps finish: `[x]` done, `[ ]` open, `[-]` skipped (with the reason), plus a one-line note of anything they must do themselves.
-- In Open WebUI, which cannot write to the user's directories, offer it as a file in `~/openwebui-outputs` with the `cp` command to put it where they want, or keep the checklist in the chat.
+- In Open WebUI, offer it as a file in `~/openwebui-outputs` with the `cp` command into their onboarding directory, or keep the checklist in the chat.
 
 ## The steps
 
 For each step: **check** their real state, **explain** what it means for them, **fix or teach**, then **mark** the checklist. Exact commands, tools and facts are in `references/bouchet-essentials.md`; read it before giving any Bouchet-specific fact.
 
 1. **Access and accounts:** their groups and Slurm accounts (PI groups are `pi_<pi-netid>`); how they connect (portal, SSH with Duo).
-2. **Storage:** their own directories and quota; what belongs in home, project and scratch; the 30-day scratch purge.
+2. **Storage (take your time here):** this is where new users most often go wrong, so go beyond a list of paths. Show their real directories and quota, then explain each space with their own numbers: what belongs in home, project and scratch, which quotas are shared with the whole group (bytes *and* file counts), what is backed up, the 30-day scratch purge, sharing with their lab, and recovering deleted files. Suggest a layout for their goal (code and data in project, large intermediate files in scratch, results copied back to project) and check they can say where they would put their own data before moving on.
 3. **Where work runs:** login nodes versus compute nodes; interactive (`salloc`) versus batch (`sbatch`); choosing a partition.
 4. **Software:** finding modules; Python and R through Conda.
 5. **First job:** a tiny test job, then reading its result and efficiency.
