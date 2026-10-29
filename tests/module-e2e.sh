@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.6) from an EasyBuild install tree
+# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.7) from an EasyBuild install tree
 # (MODULE_ROOT, default the test install; set it to /apps/software/system to
 # check production)
 # Run inside a Slurm allocation. Sends a few small requests to
@@ -7,7 +7,7 @@
 set -uo pipefail
 source /etc/profile.d/modules.sh
 T="${MODULE_ROOT:-$HOME/project/generalagents/test-install/system}"
-V="${MODULE_VERSION:-1.6}"
+V="${MODULE_VERSION:-1.7}"
 E="${E2E_WORKDIR:-$HOME/scratch/coding-agents-e2e}"
 # Each harness reads the managed policy and skills through links into its
 # module's share/ directory. Production lives under /apps, which the launcher

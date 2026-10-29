@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'pi-local'
-version = '1.6'
+version = '1.7'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -34,7 +34,7 @@ checksums = [
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
     {'pi-models.json': '6c7edd5af78d744d08964a710c9642a3d65bd78699f83e30875f2f3a9725fa1a'},
-    {'coding-agents-site.tar.gz': '03e542beee182b393b98746a56c5c02cebc82b13be2f44b24ed423f2c1bd974b'},
+    {'coding-agents-site.tar.gz': '044f1cfbc9396892de2666f00684222dafa76bfa3b305e4e6554d44751b51f0c'},
 ]
 
 postinstallcmds = [
