@@ -18,12 +18,17 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
   - Open WebUI: ask the user to run `groups` and `slurm_checkup.sh` in a terminal (in the portal: **Bouchet Shell Access** in the top menu bar opens one).
 - **Groups:** the primary group is the user's NetID; lab membership shows as `pi_<pi-netid>`. If the lab group is missing, the PI or the user requests it with the Group Change form: https://research.computing.yale.edu/group-change
 - **New accounts:** request at https://research.computing.yale.edu/account-request; the PI confirms by email; creation takes about 1-2 business days and requires Yale's cybersecurity awareness training.
+- **Course accounts:** if the username has the form `courseid_netid` (for example `cpsc4880_ab123`; check `id -un`, or in Open WebUI the user shown by `storage_quota` or `my_jobs`), it is a temporary account for one course, separate from any research account the person has. For them:
+  - **Web portal:** `https://<courseid>.ycrc.yale.edu` (for example `https://cpsc4880.ycrc.yale.edu`), logging in with their plain NetID and password, without the course prefix. The normal portal does not accept course accounts.
+  - **SSH:** `ssh courseid_netid@bouchet.ycrc.yale.edu`. Keys already uploaded for a research account carry over.
+  - **Storage:** the course has its own project (usually 4 TiB) and scratch (10 TiB), shared by everyone in the course, and each member has a 125 GiB home.
+  - **Lifetime:** coursework only, not research. All course accounts and data are deleted one month after the last day of exams, and **students get no reminder**, so anything worth keeping must be downloaded before then. YCRC can help move data to a research account.
 - **Connecting:**
-  - Web portal: https://ood-bouchet.ycrc.yale.edu (no SSH setup needed).
+  - Web portal: https://ood-bouchet.ycrc.yale.edu (course accounts: `https://<courseid>.ycrc.yale.edu`; no SSH setup needed).
   - SSH from their own computer:
     1. Create a key with a passphrase: `ssh-keygen`.
     2. Upload the public key at https://sshkeys.ycrc.yale.edu/; it can take up to 10 minutes to become active.
-    3. Connect: `ssh <netid>@bouchet.ycrc.yale.edu`.
+    3. Connect: `ssh <netid>@bouchet.ycrc.yale.edu` (course accounts: `ssh courseid_netid@bouchet.ycrc.yale.edu`).
   - Duo two-factor approval is required. Off campus, connect to the Yale VPN first.
 
 ## 2. Storage
@@ -167,7 +172,7 @@ Ask first. If their work doesn't use GPUs, say so in a sentence, mark the step s
 
 ## 7. Web portal
 
-https://ood-bouchet.ycrc.yale.edu. Interactive apps run as Slurm jobs with the resources chosen in the form:
+https://ood-bouchet.ycrc.yale.edu, or `https://<courseid>.ycrc.yale.edu` for course accounts. Interactive apps run as Slurm jobs with the resources chosen in the form:
 
 - **Jupyter:** Conda environments need the `notebook` package and registration; see `bouchet-jupyter`. Once their environment shows up and they launch a session, walk them through a short hands-on before moving on:
   1. Open a new notebook and pick their environment's kernel (not `ycrc_default`).

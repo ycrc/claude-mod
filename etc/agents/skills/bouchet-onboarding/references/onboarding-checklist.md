@@ -12,7 +12,7 @@ Mode: guided | tutorial
 Working directory: <project path>/bouchet-onboarding
 Started: <date>   Last updated: <date>
 
-- [ ] 1. Access and accounts: groups <...>; default Slurm account <...>; connects via <portal/SSH>
+- [ ] 1. Access and accounts: account type <research | course: courseid, portal URL, deletion date>; groups <...>; default Slurm account <...>; connects via <portal/SSH>
 - [ ] 2. Storage: home/project/scratch explained with their paths (project <path>, scratch <path>); group quota and file counts checked (<usage>); backups, 30-day scratch purge, lab sharing; layout for their work: <...>
 - [ ] 3. Where work runs: login vs compute; salloc vs sbatch; partitions for their goal: <...>
 - [ ] 4. Software: <modules or Conda environment for their goal>
