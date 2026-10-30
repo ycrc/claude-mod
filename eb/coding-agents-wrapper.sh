@@ -1496,7 +1496,14 @@ case "$agent" in
             --env "ANTHROPIC_SMALL_FAST_MODEL=${base_model}"
             --env "ANTHROPIC_AUTH_TOKEN=${agent_auth}"
             --env "CLAUDE_CODE_EFFORT_LEVEL=${YCRC_CLAUDE_EFFORT:-xhigh}"
-            --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_CONTEXT}"
+            # Prompt budget and output cap, as for Copilot: they sum to the
+            # model's context, so a turn can never exceed it. With the full
+            # context and Claude Code's default 32000-token output, long
+            # sessions passed ~230K tokens and every turn was rejected
+            # ("maximum context length is 262144 tokens") until compaction
+            # (52 failures, 2026-10-29).
+            --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
+            --env "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
         )
         # Claude's file tools only work in its working directory and the
         # directories it is given. The = form keeps --add-dir, which takes
