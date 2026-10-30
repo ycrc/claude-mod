@@ -25,7 +25,7 @@ Inside the agent's sandbox some commands give wrong or no results. Run those as 
   - **Lifetime:** coursework only, not research. All course accounts and data are deleted one month after the last day of exams, and **students get no reminder**, so anything worth keeping must be downloaded before then. YCRC can help move data to a research account.
   - **Partitions:** course accounts also have `education` (CPU; per user 4 jobs, 16 CPUs and 200G in total) and `education_gpu` (1 job and 1 GPU per user; RTX 5000 Ada 32 GB, A5000 24 GB or A40 48 GB), each up to 1 day (portal sessions up to 6 hours). Use them first, as in `salloc -p education` or `--partition=education_gpu --gpus=1`, when they have room (`sinfo -p education,education_gpu -o '%P %C %G'`; `partition_status` in Open WebUI) and the work fits. If they're full, or the work needs more (several GPUs, more than 48 GB of GPU memory, more than 16 CPUs or 200G, or more than a day), use the public partitions like everyone else, respectfully.
 - **Connecting:**
-  - Web portal: https://ood-bouchet.ycrc.yale.edu (course accounts: `https://<courseid>.ycrc.yale.edu`; no SSH setup needed).
+  - Web portal (no SSH setup needed): for a course account (username with an underscore), `https://<courseid>.ycrc.yale.edu`; otherwise https://ood-bouchet.ycrc.yale.edu.
   - SSH from their own computer:
     1. Create a key with a passphrase: `ssh-keygen`.
     2. Upload the public key at https://sshkeys.ycrc.yale.edu/; it can take up to 10 minutes to become active.
@@ -44,18 +44,19 @@ Spend real time on this step; misplaced data, a full group quota, or results los
 | Space | Path (shortcut) | Quota | Backed up | Use it for |
 | --- | --- | --- | --- | --- |
 | Home | `/home/<netid>` (`mydirectories` shows `/nfs/roberts/home/<netid>`; call it `/home/<netid>`) | 125 GiB and 500,000 files, **per person** | Yes | Configuration files, small scripts, notes. Not research data or day-to-day work. |
-| Project | `/nfs/roberts/project/<group>/<netid>` (`~/project`) | 4 TiB per **group**, plus a group file-count limit | Yes on Bouchet (confirm in `getquota`'s `Backup` column) | Where work happens: code, data, environments and results to keep. |
-| Scratch | `/nfs/roberts/scratch/<group>/<netid>` (`~/scratch`) | 10 TiB per **group**, plus a group file-count limit | **No** | Large temporary and intermediate files. Files older than **30 days are deleted automatically**; a weekly email warns about files due for deletion. Copy anything worth keeping back to project. |
+| Project | `/nfs/roberts/project/<group>/<netid>` (`~/project/<netid>`) | 4 TiB per **group**, plus a group file-count limit | Yes on Bouchet (confirm in `getquota`'s `Backup` column) | Where work happens: code, data, environments and results to keep. |
+| Scratch | `/nfs/roberts/scratch/<group>/<netid>` (`~/scratch/<netid>`) | 10 TiB per **group**, plus a group file-count limit | **No** | Large temporary and intermediate files. Files older than **30 days are deleted automatically**; a weekly email warns about files due for deletion. Copy anything worth keeping back to project. |
 
+- **Shortcuts point to the group directory:** `~/project` and `~/scratch` lead to `/nfs/roberts/project/<group>` and `/nfs/roberts/scratch/<group>`, which hold one directory per member. This is deliberate, so users see the group's shared space: personal work goes in their own directory, `~/project/<netid>` and `~/scratch/<netid>` (the paths `mydirectories` prints), and work the lab shares in the group directory (see below). Point this out in the storage step.
 - **Group quotas are shared:** project and scratch quotas (bytes and file counts) are shared by everyone in the group, so one person's millions of small files or forgotten intermediate data can stop the whole lab from writing. `getquota` warns when the group nears a limit.
 - **PI groups and sharing:**
   - Members of a lab group also have `~/project_pi_<pi>` and `~/scratch_pi_<pi>` shortcuts.
   - Project and scratch directories are readable by the user's group by default (through the real path, not the shortcut).
-  - A lab can keep shared data and reference files in `/nfs/roberts/project/<group>/shared`.
+  - A lab can keep shared data and reference files in `/nfs/roberts/project/<group>/shared`. Coding agents see a group's `shared` directory read-only, so they never change files the lab shares; to put results there, the user copies them in.
   - Never give the home directory group write permission; it breaks logging in.
 - **Conda environments:** `~/.conda/envs` normally points into project storage on Bouchet (check with `ls -l ~/.conda`), so environments count against the group's project quota and file count.
 - **Recovering deleted files:** home and project have snapshots covering at least the last 2 days; see https://docs.ycrc.yale.edu/data/backups/ or contact YCRC for restores. Scratch has no snapshots.
-- **Suggest a layout for their goal,** for example `~/project/<topic>/` with `code/`, `data/` and `results/`, and large intermediate files under `~/scratch/<topic>/`. Then ask where they would put their own data, and correct gently if needed.
+- **Suggest a layout for their goal,** for example `~/project/<netid>/<topic>/` with `code/`, `data/` and `results/`, and large intermediate files under `~/scratch/<netid>/<topic>/`. Then ask where they would put their own data, and correct gently if needed.
 - Details: `bouchet-storage`, `bouchet-scratch`.
 
 ## 3. Where work runs

@@ -26,9 +26,9 @@ The user can switch modes at any time.
 
 ## Where the work happens
 
-Onboarding work (the checklist, the test job, practice files) lives in a new directory in the user's **project** storage, for example `~/project/bouchet-onboarding` (the real path is under `/nfs/roberts/project/<group>/<netid>`; see `mydirectories`). Home is small and meant for configuration and scripts, so don't put work there; setting this up is also the first practical lesson about where things belong on Bouchet.
+Onboarding work (the checklist, the test job, practice files) lives in a new directory in the user's **project** storage, for example `~/project/<netid>/bouchet-onboarding`. `~/project` is a shortcut to the **group's** project directory (`/nfs/roberts/project/<group>`); the user's own directory is one level down, `/nfs/roberts/project/<group>/<netid>`, which is what `mydirectories` prints. The shortcut opens the group directory on purpose, so users see their lab's shared space: personal work goes in their `<netid>` directory, and work the group shares in the group directory (for example its `shared` directory). Use the `<netid>` path for onboarding. Home is small and meant for configuration and scripts, so don't put work there; setting this up is also the first practical lesson about where things belong on Bouchet.
 
-- **Coding agents** can only write in the directory the session was started in. Check it (`pwd -P`). If it is not under `/nfs/roberts/project/`, explain why before creating any files and ask the user to restart there: `mkdir -p ~/project/bouchet-onboarding && cd ~/project/bouchet-onboarding`, then start the agent again. A checklist from an earlier session is found there.
+- **Coding agents** can only write in the directory the session was started in. Check it (`pwd -P`). If it is not under the user's own project directory (`/nfs/roberts/project/<group>/<netid>`), explain why before creating any files and ask the user to restart there: `mkdir -p ~/project/$USER/bouchet-onboarding && cd ~/project/$USER/bouchet-onboarding` (if `~/project/$USER` doesn't exist, use the project path from `mydirectories`), then start the agent again. A checklist from an earlier session is found there.
 - **Open WebUI** cannot write to the user's directories: give them the `mkdir` command and put files in `~/openwebui-outputs` with the `cp` command to move them into that directory.
 
 ## The checklist file
@@ -73,10 +73,10 @@ Keep onboarding short; when a step needs depth, use the skill for it:
 
 Do not answer these from general HPC knowledge; they differ on Bouchet:
 
-- Course accounts (username `courseid_netid`) use their own portal, `https://<courseid>.ycrc.yale.edu`, not ood-bouchet, and are deleted one month after the semester's last exam day with no reminder to students. Check the username before giving a portal link (`id -un`; in Open WebUI, the user shown by `storage_quota` or `my_jobs`).
+- Course accounts (username `courseid_netid`) use their own portal, `https://<courseid>.ycrc.yale.edu`, not ood-bouchet, and are deleted one month after the semester's last exam day with no reminder to students. Check the username before giving any portal link (`id -un`; in Open WebUI, the user shown by `storage_quota` or `my_jobs`): if it contains an underscore, the part before it is the course ID and the portal is `https://<courseid>.ycrc.yale.edu` (for `ihpc_ab123`, `https://ihpc.ycrc.yale.edu`). Never give a course account the ood-bouchet address, including in passing (for example "open a terminal from the portal").
 - Course accounts also have the `education` and `education_gpu` partitions; steer their jobs there first when those have room and the work fits (see `references/bouchet-essentials.md`).
 - The login host is `bouchet.ycrc.yale.edu` (not `bouchet.hpc.yale.edu`), with SSH keys uploaded at `https://sshkeys.ycrc.yale.edu/` and Duo.
-- Storage is per group under `/nfs/roberts/...`, not `/project` or `/scratch`. Get the user's real paths from `mydirectories`; never guess them.
+- Storage is per group under `/nfs/roberts/...`, not `/project` or `/scratch`. `~/project` and `~/scratch` point to the group directory, so the lab's shared space is visible; the user's own is the `<netid>` directory inside it. Get the user's real paths from `mydirectories`; never guess them.
 - Python is used through `module load miniconda` and Conda environments; never invent module names (`python/3.11` does not exist). Find real names with `module avail <name>` or `software_search`.
 - Partition limits change; read them live (`sinfo`, `partition_status`) instead of quoting from memory. Offer only partitions the user can use: not `admintest`, and not `priority*` unless they have Priority Tier credits.
 - The portal's Job Composer is disabled on Bouchet (it confused users). Don't mention it; batch jobs are submitted with `sbatch` from a shell.

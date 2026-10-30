@@ -2,7 +2,7 @@
 
 ## Checklist template
 
-Create `BOUCHET-ONBOARDING.md` in the user's onboarding directory in project storage (for example `~/project/bouchet-onboarding`; see "Where the work happens" in `SKILL.md`) from this template once the user has told you their goal. Fill in what you learn; mark steps `[x]` done, `[ ]` open, `[-]` skipped (say why). Keep notes to one line each, and record anything only the user can do as "You:".
+Create `BOUCHET-ONBOARDING.md` in the user's onboarding directory in project storage (for example `~/project/<netid>/bouchet-onboarding`; see "Where the work happens" in `SKILL.md`) from this template once the user has told you their goal. Fill in what you learn; mark steps `[x]` done, `[ ]` open, `[-]` skipped (say why). Keep notes to one line each, and record anything only the user can do as "You:".
 
 ```markdown
 # Bouchet onboarding: <netid>
@@ -44,7 +44,7 @@ The exercises' sections map onto the checklist:
 | Exercise section | Checklist step | Notes for Bouchet |
 | --- | --- | --- |
 | Navigating and using HPC (pwd, ls, cd, nano, cp, mv, rm) | before 1 | Skip if they already use a Linux shell. |
-| Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/workshop`) | 8 | On Bouchet the data path is `/apps/data/training`. |
+| Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/$USER/workshop`) | 8 | On Bouchet the data path is `/apps/data/training`. |
 | Understanding quotas (`getquota`) | 2 | In an agent session, run it as `srun --overlap --ntasks=1 getquota` (see `bouchet-essentials.md`). |
 | Running Python (`salloc`, `module load Python`, the interactive example) | 3, 4 | Teach Conda instead of `module load Python`: Python modules are dependencies of other software, not for users. Do the Miniconda row first and run the example in that environment. |
 | Installing packages with Miniconda (`conda create -n myenv ...`) | 4 | Follows `bouchet-conda`: create the environment with `python` and `uv`, then install packages with `uv pip install`. |
