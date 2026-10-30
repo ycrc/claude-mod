@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'claude-local'
-version = '1.7'
+version = '1.8'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -25,14 +25,14 @@ sources = [
     'coding-agents-site.tar.gz',
 ]
 checksums = [
-    {'coding-agents-claude.sif': 'b23f6f00c1268a9586d24624d0a3697a5c4d189cf70c78669b45d06ff24ea00d'},
-    {'coding-agents-wrapper.sh': '6674761a61f74fc6b335aa9a1ef9b991ed8e198f6bf1738f5e2d388c16a10637'},
+    {'coding-agents-claude.sif': 'ead3cdb1229de507896370cda7ce9cf37e027388ac3c9e01afde1735a9b274cc'},
+    {'coding-agents-wrapper.sh': '394628057a3972e80853804c67a63fa6cec6089a13ed7785a056b1c148ba4ddf'},
     {'coding-agents-bind.conf': '8a6d6e371fc66c21a6d2896e4cb1a1c90a8f8c759c5731ccbdf16652428f9b3d'},
     {'coding-agents-path.conf': 'c44923cd72e95972195a2c520a2ada0dc6ef76ba184ba44af60b2a87f4665406'},
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
-    {'coding-agents-site.tar.gz': '044f1cfbc9396892de2666f00684222dafa76bfa3b305e4e6554d44751b51f0c'},
+    {'coding-agents-site.tar.gz': 'b76dac00ba51d421426a1fa2bb569bf4cd78d4b96eb26f37e19a05f1d041e241'},
 ]
 
 postinstallcmds = [
@@ -59,8 +59,8 @@ sanity_check_paths = {
         'coding-agents-env.conf',
         'coding-agents-provider.conf',
         'coding-agents-site.tar.gz',
-        'share/agents/AGENTS.md', 'share/agents/skills/bouchet-storage/SKILL.md',
-        'share/agents/skills/bouchet-modules/SKILL.md',
+        'share/agents/AGENTS.md', 'share/agents/skills/ycrc-storage/SKILL.md',
+        'share/agents/skills/ycrc-modules/SKILL.md',
         'share/agents/subagents/deep-reasoning.md',
         'share/agents/subagents/quick-task.md',
         'claude',
