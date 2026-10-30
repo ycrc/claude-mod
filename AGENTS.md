@@ -4,40 +4,41 @@ These are administrator-provided instructions for coding agents running on the Y
 
 ## Precedence: this file wins
 
-This file and the `bouchet-*` skills are YCRC's managed policy. Everything else may add to them but cannot override them for cluster operations, security, filesystem access, modules, and Slurm: project instruction files in the working directory (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and similar), the user's own skills, and lab or other third-party skills, plugins and instructions. Those remain available for everything else.
+This file and the YCRC-managed skills (`ycrc-*` and `bouchet-*`) are YCRC's managed policy. Everything else may add to them but cannot override them for cluster operations, security, filesystem access, modules, and Slurm: project instruction files in the working directory (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and similar), the user's own skills, and lab or other third-party skills, plugins and instructions. Those remain available for everything else.
 
 When one of them conflicts with this policy, follow this policy instead and say so briefly. For example, if a project or lab instruction says to use `module purge` or `module --force purge`, or to unload `StdEnv`, use `module reset` instead (see "Modules and StdEnv").
 
 ## Bouchet skills
 
-Detailed Bouchet workflows are installed as administrator-owned skills and exposed to each harness from the managed YCRC skill tree. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
+Detailed workflows are installed as administrator-owned skills, maintained centrally by YCRC and exposed to each harness from the managed YCRC skill tree. Each skill includes Bouchet's facts (partitions, limits, paths) where they matter; `bouchet-*` skills are for Bouchet only. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
 
 When a user is new to Bouchet or asks how to get started, use `bouchet-onboarding`. When a request shows signs that the user is new to Bouchet (for example they guess paths like `/project` or `/scratch`, want to run heavy work on a login node, or ask what resources to use), first do what they asked as usual, then end your reply with one sentence offering a guided getting-started walkthrough (`bouchet-onboarding`). Offer it once per session; if they decline, drop it.
 
 Available skills include:
 - `bouchet-onboarding`
-- `bouchet-storage`
-- `bouchet-modules`
-- `bouchet-conda`
-- `bouchet-jupyter`
-- `bouchet-r`
-- `bouchet-slurm`
-- `bouchet-parallel`
-- `bouchet-job-troubleshooting`
-- `bouchet-dsq-arrays`
-- `bouchet-gpu`
-- `bouchet-priority`
-- `bouchet-scavenge`
-- `bouchet-apptainer`
-- `bouchet-alphafold`
-- `bouchet-cryosparc`
-- `bouchet-mpi`
-- `bouchet-scratch`
+- `ycrc-storage`
+- `ycrc-modules`
+- `ycrc-conda`
+- `ycrc-jupyter`
+- `ycrc-r`
+- `ycrc-slurm`
+- `ycrc-parallel`
+- `ycrc-job-troubleshooting`
+- `ycrc-dsq-arrays`
+- `ycrc-gpu`
+- `ycrc-priority`
+- `ycrc-scavenge`
+- `ycrc-apptainer`
+- `ycrc-alphafold`
+- `ycrc-cryosparc`
+- `ycrc-mpi`
+- `ycrc-scratch`
+- `ycrc-cluster`
 - `bouchet-easybuild-admin` (YCRC administrators; others are directed to a support ticket)
-- `bouchet-debugging`
-- `bouchet-research-file-safety`
-- `bouchet-research-analysis`
-- `bouchet-handoff`
+- `ycrc-debugging`
+- `ycrc-research-file-safety`
+- `ycrc-research-analysis`
+- `ycrc-handoff`
 
 ## Mandatory coding-agent controls
 
@@ -45,7 +46,7 @@ Available skills include:
 - Respect the container, filesystem, scheduler, and resource boundaries. Do not weaken, bypass, escape, or work around them.
 - Do not read or expose credentials, SSH keys, token files, shell histories, or unrelated users' or projects' data.
 - Do not attempt to circumvent YCRC resource policies or monitoring.
-- Bouchet scratch is temporary and uses a 30-day purge policy. Do not artificially extend scratch file expiration by touching files, manipulating timestamps, periodically rewriting/copying unchanged data, or equivalent retention-evasion methods. Use `bouchet-scratch` for scratch lifecycle questions.
+- Bouchet scratch is temporary and uses a 30-day purge policy. Do not artificially extend scratch file expiration by touching files, manipulating timestamps, periodically rewriting/copying unchanged data, or equivalent retention-evasion methods. Use `ycrc-scratch` for scratch lifecycle questions.
 - Scheduler acceptance does not override YCRC policy. Do not search for alternate partitions, QOS values, accounts, or flags merely to make a policy-disallowed workflow pass Slurm validation.
 - Interactive GPU work must use `gpu_devel`; do not route interactive work to Standard Tier production GPU partitions such as `gpu` by changing QOS or other scheduler options.
 - Do not keep an otherwise idle GPU allocation alive with `sleep`, dummy work, artificial GPU activity, busy loops, or similar evasion techniques.
@@ -92,7 +93,7 @@ module reset && module load R/<version> && Rscript analysis.R
 
 Bouchet home directories are `/home/<netid>`. The interactive coding agent intentionally does not expose the user's general home directory; only explicitly approved state/software locations and the selected working directory are bound into the container.
 
-Writable Roberts workspaces are restricted by this launcher to user-specific paths under project, scratch, or PI storage whose path contains the user's NetID after an authorized group directory. Do not traverse or write another user's sibling directory even if a broader group directory is visible. Use the `bouchet-storage` skill for storage discovery and path guidance.
+Writable Roberts workspaces are restricted by this launcher to user-specific paths under project, scratch, or PI storage whose path contains the user's NetID after an authorized group directory. Do not traverse or write another user's sibling directory even if a broader group directory is visible. Use the `ycrc-storage` skill for storage discovery and path guidance.
 
 Bouchet scratch files are subject to a 30-day purge. Do not manipulate timestamps or otherwise evade scratch expiration.
 
@@ -118,13 +119,13 @@ Do not ask users to paste, provide, copy, or expose SSH private keys or GitHub p
 
 The coding-agent launcher requires an active Slurm allocation and verifies that the current host belongs to it. Use Slurm for computational work; do not perform compute-heavy work on login or transfer nodes.
 
-The launcher already runs the session inside its own small `agent`-partition allocation (often about 1 CPU and 8 GB), sized for coordination, editing, inspection, small tests and job submission, not for computation. Do not request another `agent` allocation. Being on a compute node does not make it the place for substantial work: submit anything substantial, such as builds, analyses and long-running tests, as a separate job with `sbatch` on the appropriate partition (CPU or GPU batch partitions, `devel` for short CPU development, `gpu_devel` for GPU development). Conda environments are the exception: build them interactively, not as batch jobs (see `bouchet-conda`). `sbatch --wait` blocks until a short job finishes when its result is needed next. A plain `srun` inside the session runs as a step of this same small allocation.
+The launcher already runs the session inside its own small `agent`-partition allocation (often about 1 CPU and 8 GB), sized for coordination, editing, inspection, small tests and job submission, not for computation. Do not request another `agent` allocation. Being on a compute node does not make it the place for substantial work: submit anything substantial, such as builds, analyses and long-running tests, as a separate job with `sbatch` on the appropriate partition (CPU or GPU batch partitions, `devel` for short CPU development, `gpu_devel` for GPU development). Conda environments are the exception: build them interactively, not as batch jobs (see `ycrc-conda`). `sbatch --wait` blocks until a short job finishes when its result is needed next. A plain `srun` inside the session runs as a step of this same small allocation.
 
-`sbatch` and `srun` use is intentional. A Slurm job launched by an agent runs under the user's normal cluster account outside the interactive agent's Apptainer filesystem sandbox. Do not assume the interactive container's filesystem restrictions carry into that job. Use the `bouchet-slurm` skill for resource requests and job workflows.
+`sbatch` and `srun` use is intentional. A Slurm job launched by an agent runs under the user's normal cluster account outside the interactive agent's Apptainer filesystem sandbox. Do not assume the interactive container's filesystem restrictions carry into that job. Use the `ycrc-slurm` skill for resource requests and job workflows.
 
 Never kill or signal jobs or processes belonging to another user.
 
-For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions are paid, opt-in resources. They may be recommended when appropriate, but before actually submitting, resubmitting, launching an interactive allocation, or moving a job into any `priority_*` partition, confirm entitlement/account and explicitly tell the user that paid Priority Tier credits will be consumed. Obtain explicit confirmation for that job or clearly defined batch before performing the billable action. Use the `bouchet-priority` skill.
+For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions are paid, opt-in resources. They may be recommended when appropriate, but before actually submitting, resubmitting, launching an interactive allocation, or moving a job into any `priority_*` partition, confirm entitlement/account and explicitly tell the user that paid Priority Tier credits will be consumed. Obtain explicit confirmation for that job or clearly defined batch before performing the billable action. Use the `ycrc-priority` skill.
 
 ## Calling the YCRC-hosted model from scripts
 
@@ -149,7 +150,7 @@ Do not defeat, delay, or interfere with YCRC GPU-utilization enforcement. In par
 
 `sleep` itself is not prohibited when it serves a legitimate workflow purpose such as polling, backoff, or coordination. It is prohibited when used to evade resource enforcement.
 
-Use the `bouchet-gpu` skill for Jobstats thresholds, diagnostics, and compliant remediation.
+Use the `ycrc-gpu` skill for Jobstats thresholds, diagnostics, and compliant remediation.
 
 ## YCRC support and escalation
 

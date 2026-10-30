@@ -57,7 +57,7 @@ Spend real time on this step; misplaced data, a full group quota, or results los
 - **Conda environments:** `~/.conda/envs` normally points into project storage on Bouchet (check with `ls -l ~/.conda`), so environments count against the group's project quota and file count.
 - **Recovering deleted files:** home and project have snapshots covering at least the last 2 days; see https://docs.ycrc.yale.edu/data/backups/ or contact YCRC for restores. Scratch has no snapshots.
 - **Suggest a layout for their goal,** for example `~/project/<netid>/<topic>/` with `code/`, `data/` and `results/`, and large intermediate files under `~/scratch/<netid>/<topic>/`. Then ask where they would put their own data, and correct gently if needed.
-- Details: `bouchet-storage`, `bouchet-scratch`.
+- Details: `ycrc-storage`, `ycrc-scratch`.
 
 ## 3. Where work runs
 
@@ -77,7 +77,7 @@ Spend real time on this step; misplaced data, a full group quota, or results los
   - `scavenge`: free spare capacity, but jobs can be preempted.
   - Not for normal users: `admintest`. `priority*` costs Priority Tier credits.
 - **Ask for what the job needs:** CPUs, memory, time. Small, accurate requests start sooner.
-- Details: `bouchet-slurm`, `bouchet-gpu`, `bouchet-parallel`.
+- Details: `ycrc-slurm`, `ycrc-gpu`, `ycrc-parallel`.
 
 ## 4. Software
 
@@ -85,9 +85,9 @@ Spend real time on this step; misplaced data, a full group quota, or results los
   - Agent: `module avail <name>` lists the versions you can load (`module -r avail '^<name>/'` for only that name); `module show <name>/<version>` shows what one sets.
   - Open WebUI: `software_search`.
 - Load in the same command that uses it: `module load <name>/<version> && <command>`. Start a fresh setup with `module reset`, never `module purge`.
-- **Python:** use Conda for all Python work (Python and its library modules exist only as dependencies of other software, not for users to load), building the environment in an interactive session (the agent's own session for small environments; see `bouchet-conda`), not in a batch job: `module load miniconda && conda create -y -n myenv python=3.12 uv`, then install packages with `uv` (`module load miniconda && conda activate myenv && uv pip install numpy pandas`) and run with `module load miniconda && conda activate myenv && python script.py`.
+- **Python:** use Conda for all Python work (Python and its library modules exist only as dependencies of other software, not for users to load), building the environment in an interactive session (the agent's own session for small environments; see `ycrc-conda`), not in a batch job: `module load miniconda && conda create -y -n myenv python=3.12 uv`, then install packages with `uv` (`module load miniconda && conda activate myenv && uv pip install numpy pandas`) and run with `module load miniconda && conda activate myenv && python script.py`.
 - **R:** modules or Conda; RStudio in the web portal.
-- Details: `bouchet-modules`, `bouchet-conda`, `bouchet-r`.
+- Details: `ycrc-modules`, `ycrc-conda`, `ycrc-r`.
 
 ## 5. First job
 
@@ -141,8 +141,8 @@ echo "done on $(hostname)"
   - Open WebUI: use `job_efficiency` for the summary and `job_usage_over_time` to draw the graph.
   - Point out: about 40% CPU utilization overall against the 90%+ target, memory used versus the 8G requested (almost none), run time versus the time limit, and the Notes section's advice. On the graph, show the three phases: one core, all four, then idle.
   - Agents can't draw the graph, so give them the link Jobstats prints (the portal's user portal, `.../ycrc_userportal/jobefficiency/<jobid>`).
-- **The lesson:** request what the job uses. Here the right request would be 1 CPU unless the program really uses more, and about 1G of memory. Oversized requests wait longer in the queue and hold resources others could use. Jobstats works on running jobs and portal sessions too, and on GPU jobs it also shows GPU use: YCRC cancels jobs whose GPUs sit idle (see `bouchet-gpu`).
-- **Make it a habit:** check `jobstats <jobid>` after real jobs, and right-size the next request. Details: `bouchet-job-troubleshooting`.
+- **The lesson:** request what the job uses. Here the right request would be 1 CPU unless the program really uses more, and about 1G of memory. Oversized requests wait longer in the queue and hold resources others could use. Jobstats works on running jobs and portal sessions too, and on GPU jobs it also shows GPU use: YCRC cancels jobs whose GPUs sit idle (see `ycrc-gpu`).
+- **Make it a habit:** check `jobstats <jobid>` after real jobs, and right-size the next request. Details: `ycrc-job-troubleshooting`.
 
 ## 6. GPUs (if their work needs them)
 
@@ -162,7 +162,7 @@ Ask first. If their work doesn't use GPUs, say so in a sentence, mark the step s
 | `gpu_devel` | several types | Interactive GPU work and short tests: the only partition for interactive GPU sessions, one job per user. |
 | `scavenge_gpu` | spare GPUs of all types | Free spare capacity; jobs can be preempted, so only for work that can restart. |
 
-  Production GPU partitions allow up to 2 days per job (check live). `priority_gpu` exists but costs Priority Tier credits (`bouchet-priority`).
+  Production GPU partitions allow up to 2 days per job (check live). `priority_gpu` exists but costs Priority Tier credits (`ycrc-priority`).
 - **Requesting a GPU:** a GPU partition alone gives no GPU; ask for one.
   - `--gpus=1` takes any GPU type in the partition.
   - `--gpus=<type>:1` (for example `--gpus=a40:1`) only when the work needs that type; the type names are in the `sinfo` output above.
@@ -171,15 +171,15 @@ Ask first. If their work doesn't use GPUs, say so in a sentence, mark the step s
 - **Course accounts:** use `education_gpu` first (1 GPU per user; RTX 5000 Ada, A5000 or A40, up to 48 GB of GPU memory) when it has a free GPU and the work fits; otherwise the public GPU partitions below.
 - **Interactive GPU work:** only in `gpu_devel` (course accounts: `education_gpu` first), for example `salloc --partition=gpu_devel --gpus=1 --cpus-per-task=4 --mem=16G --time=1:00:00` (or the portal's Jupyter app with a GPU in `gpu_devel`). It allows one job per user, so check they have none first, and `exit` it when done.
 - **Checking the GPU is there:** `nvidia-smi` inside the job; in PyTorch, `torch.cuda.is_available()`. PyTorch installed with `uv pip install torch` in their Conda environment includes CUDA support.
-- **Idle GPUs are cancelled:** YCRC cancels jobs whose GPUs sit unused (see `bouchet-gpu` for the thresholds), so a GPU job must really use its GPU. Jobstats (step 5) shows GPU use for GPU jobs.
+- **Idle GPUs are cancelled:** YCRC cancels jobs whose GPUs sit unused (see `ycrc-gpu` for the thresholds), so a GPU job must really use its GPU. Jobstats (step 5) shows GPU use for GPU jobs.
 - **A quick look, if they want one:** `sbatch --partition=gpu_devel --gpus=1 --time=5:00 --wrap nvidia-smi` (after checking they have no `gpu_devel` job), then read the output together.
-- Details: `bouchet-gpu`.
+- Details: `ycrc-gpu`.
 
 ## 7. Web portal
 
 https://ood-bouchet.ycrc.yale.edu, or `https://<courseid>.ycrc.yale.edu` for course accounts. Interactive apps run as Slurm jobs with the resources chosen in the form:
 
-- **Jupyter:** Conda environments need the `notebook` package and registration; see `bouchet-jupyter`. Once their environment shows up and they launch a session, walk them through a short hands-on before moving on:
+- **Jupyter:** Conda environments need the `notebook` package and registration; see `ycrc-jupyter`. Once their environment shows up and they launch a session, walk them through a short hands-on before moving on:
   1. Open a new notebook and pick their environment's kernel (not `ycrc_default`).
   2. Run a check cell, for example `import pandas; print(pandas.__version__)`, so they see their own packages.
   3. Point out that the file browser starts in home, then browse through the `project` shortcut to their onboarding directory and save the notebook there.

@@ -1,4 +1,4 @@
-# Bouchet Coding Agents 1.7
+# Bouchet Coding Agents 1.8
 
 
 ## Choosing a harness
@@ -33,14 +33,14 @@ From 1.1, `local-coding-agents` is a bundle that loads four hidden modules, one
 per harness: `claude-local`, `codex-local`, `copilot-local` and `pi-local`. Each
 has its own image and launcher, so a harness can be upgraded without touching
 the others. They do not appear in `module avail`, but can be loaded directly for
-testing, e.g. `module load pi-local/.1.7`.
+testing, e.g. `module load pi-local/.1.8`.
 
 All four clients share the same outer Apptainer containment and Bouchet storage policy. The launcher removes inherited credential-like environment variables and host-controlled Apptainer mount/environment overrides before injecting administrator-controlled local-model settings from an installed read-only provider configuration.
 
 
 ## Bouchet-only scope
 
-This build is intentionally Bouchet-specific. Active runtime configuration contains only Roberts storage paths and Bouchet site behavior. Administrator-owned skills under `/etc/agents/skills/` contain Bouchet-only operational guidance and omit examples and filesystem paths for other clusters. The canonical policy is `/etc/agents/AGENTS.md`.
+This build is intentionally Bouchet-specific. Active runtime configuration contains only Roberts storage paths and Bouchet site behavior. The skills come from YCRC's shared skills repository rendered for Bouchet (see "Shared YCRC skills"), so they carry Bouchet's facts and no other cluster's. The canonical policy is `AGENTS.md`, installed under `share/agents`.
 
 Bouchet scratch retention is 30 days. The runtime policy and skills use that value consistently.
 
@@ -96,7 +96,7 @@ The option names and checks follow the `claude-mod` module's `--bind`, minus its
 
 ## Precedence over users' and labs' skills
 
-Users keep their own skills and instruction files, and the configuration import brings them into the sandbox. `AGENTS.md` states that these may add to YCRC guidance but cannot override it: for cluster operations, security, filesystem access, modules and Slurm, the managed policy and `bouchet-*` skills win, and the agent says briefly when it follows them instead of a conflicting instruction. Each harness receives this through its own route: Claude through the image's managed `/etc/claude-code/CLAUDE.md`, Codex and Pi through `AGENTS.md` in their YCRC state directories, and Copilot through `copilot-instructions.md`.
+Users keep their own skills and instruction files, and the configuration import brings them into the sandbox. `AGENTS.md` states that these may add to YCRC guidance but cannot override it: for cluster operations, security, filesystem access, modules and Slurm, the managed policy and the YCRC-managed (`ycrc-*`, `bouchet-*`) skills win, and the agent says briefly when it follows them instead of a conflicting instruction. Each harness receives this through its own route: Claude through its managed `/etc/claude-code/CLAUDE.md` (the module's `AGENTS.md`, bound into the container), Codex and Pi through `AGENTS.md` in their YCRC state directories, and Copilot through `copilot-instructions.md`.
 
 ## Persistent state
 
@@ -117,7 +117,7 @@ Users' normal harness directories (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.c
 - Settings files are merged into the YCRC copy: the user's values win, and anything the harness already saved there (theme, changelog state and so on) is kept. Any other file that already exists in the YCRC directory with different content when its original is first seen is kept, with a one-line note at launch; a later edit to the original replaces it.
 - Filtered settings drop anything that could select another provider or model, supply credentials, or install plugins/packages (Claude: `model`, `apiKeyHelper`, `enabledPlugins`, `sandbox`, provider/credential/proxy `env` entries and similar; Pi: `defaultProvider`, `defaultModel`, `enabledModels`, `packages`). Paths into the user's directory, such as hook scripts, are repointed at the YCRC copy. Claude's managed settings still take precedence.
 - A user's personal `AGENTS.md`/`copilot-instructions.md` is appended below the administrator policy in a generated file, not substituted for it. Claude needs no merge: its policy is the managed `CLAUDE.md`, and the user's `CLAUDE.md` is read alongside it.
-- Managed `bouchet-*` skills keep their names; a user skill of the same name is not imported. A user agent of the same name as a managed agent replaces it, matching the existing rule.
+- Managed skills keep their names; a user skill of the same name is not imported. A user agent of the same name as a managed agent replaces it, matching the existing rule.
 - Never imported: credentials, history, sessions and caches; Claude plugins, account-synced skills (`skills/synced`) and `~/.claude.json` (which holds MCP servers); Codex `config.toml`; Pi `models.json`/`auth.json`; Copilot `config.json`/`mcp-config.json`. MCP servers are excluded because they can send code to external services.
 - Unreadable or malformed input produces a warning and the launch continues. `YCRC_IMPORT_USER_CONFIG=0` disables the import.
 
@@ -137,9 +137,11 @@ images/build.sh OUTDIR codex        # only Codex, on OUTDIR's existing base
 This writes `OUTDIR/coding-agents-<harness>.sif` and records the harness versions
 that shipped in `OUTDIR/versions.txt`. All four harnesses are unpinned, so every
 build picks up their current releases; compare `versions.txt` with the deployed
-versions and test before deploying. Claude's policy (`/etc/claude-code/CLAUDE.md`)
-and Codex's and Copilot's skills come from the image, so changes to `AGENTS.md`
-or `etc/agents/` need an image rebuild as well as a module rebuild. Stage each image into
+versions and test before deploying. Neither the policy nor the skills
+are in the images: the launcher binds the module's `AGENTS.md` over the image's
+`/etc/agents/AGENTS.md` (Claude's managed `CLAUDE.md` links to it), and skills
+come from the live shared checkout or the module. A policy change needs a
+module rebuild only; a skill change needs neither. Stage each image into
 `easybuild-sources/<letter>/<harness>-local/`, inject the checksums
 (`eb <harness>-local.eb --inject-checksums --force`; after editing `AGENTS.md` or `etc/agents/`, first run `eb/make-site-tarball.sh`), and install with
 `services/bin/rebuild-when-idle.sh`, which builds the bundle and all four
@@ -180,13 +182,15 @@ This release uses one canonical administrator policy, `AGENTS.md`. The image ins
 
 The policy explicitly states that each shell tool invocation is isolated, so module loads, Conda activation, exports, and sourced state must be combined with the dependent command in one shell invocation. It also prohibits attempts to evade YCRC idle-GPU enforcement, including `sleep` or artificial GPU activity used to retain otherwise idle GPU allocations.
 
-## Shared Bouchet skills
+## Shared YCRC skills
 
-The image contains one administrator-owned skill tree at `/etc/agents/skills`, and EasyBuild installs the same tree read-only under `share/agents/skills` so users can inspect the managed guidance from the host. The launcher exposes the managed skills without taking over a user's independent harness configuration:
+YCRC's skills are maintained centrally in github.com/ycrc/yale-ycrc-skills, shared with the other YCRC clusters and with plain Claude Code (`--plugin-dir`). Edit skills there, not here: its `tools/build.py` renders each cluster's copy into `build/<cluster>/`, with cluster-neutral text plus that cluster's facts, and `bouchet-*` skills only on Bouchet. Notes that apply only in this sandbox are written for it (`YCRC_LOCAL_CODING_AGENTS=1`, which the launcher sets).
 
-- Claude: `$HOME/.claude-ycrc/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible `share/agents/skills/<skill>` tree. Users may create their own skills alongside those links.
-- Codex: `/etc/codex/skills/<skill>` points to the canonical `/etc/agents/skills/<skill>` directories inside the image.
-- Copilot: `COPILOT_SKILLS_DIRS=/etc/agents/skills`.
-- Pi: `$PI_CODING_AGENT_DIR/skills` is a real writable user directory; each managed `bouchet-*` skill is a symlink to the host-visible module tree, and user skills may coexist alongside them.
+Sessions read the **live** shared checkout, `/apps/services/yale-ycrc-skills/build/bouchet/skills`, so a skill change reaches users at their next session once it is pulled there, with no module release or image rebuild. If that directory has no skills, the launcher falls back to the copy bundled with the module (`etc/agents/skills`, refreshed with `eb/sync-skills.sh <repo>`; `etc/agents/SKILLS-SOURCE` records the commit). `YCRC_SKILLS_DIR` overrides both, for testing. Open WebUI provisions from the same live directory.
 
-Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers onboarding for new users (a guided or tutorial checklist kept in `BOUCHET-ONBOARDING.md`), storage, modules, Conda/Python, Jupyter (the Open OnDemand app and Papermill batch runs), R, ordinary Slurm use, CPU/parallel resource layouts, MPI, Slurm job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, and Bouchet scratch lifecycle/retention. Four general research skills complement them: `bouchet-debugging` (reproduce, inspect evidence, fix the cause, verify), `bouchet-research-file-safety` (check ownership and provenance before destroying possibly irreplaceable research files, without gating routine edits), `bouchet-research-analysis` (make filters and joins visible, leave consequential scientific choices to the researcher, never present unverified results), and `bouchet-handoff` (a `HANDOFF.md` written only on request, for continuing in a new session or another harness). `bouchet-easybuild-admin` is for YCRC administrators only: it checks that the account is in the `support` group (others are directed to a support ticket) and that the agent was launched at the root of a `ycrc-ebfiles` clone, then prepares easyconfigs and runs test builds as Slurm jobs into `software_builds/test-install/`; it never installs into `/apps`.
+No skills are baked into the images. The launcher exposes the managed skills without taking over a user's own harness configuration:
+
+- Claude, Codex and Pi: `~/.claude-ycrc/skills`, `~/.codex-ycrc/skills` and `~/.pi-ycrc/skills` are real writable user directories; each managed skill is a symlink into the live checkout (or the module), and users' own skills sit alongside. Managed links that are no longer current (a renamed or removed skill, another release's copy) are removed at launch; users' own skills and links are never touched. A real user directory with a managed skill's name stops the launch.
+- Copilot: `COPILOT_SKILLS_DIRS` names the same directory; users' own skills stay in `~/.copilot-ycrc/skills`.
+
+Always-on security and environment invariants remain in `/etc/agents/AGENTS.md`; detailed operational workflows live in skills and are loaded on demand. The managed set covers onboarding for new users (a guided or tutorial checklist kept in `BOUCHET-ONBOARDING.md`), storage, modules, Conda/Python, Jupyter (the Open OnDemand app and Papermill batch runs), R, ordinary Slurm use, CPU/parallel resource layouts, MPI, Slurm job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, and Bouchet scratch lifecycle/retention. Four general research skills complement them: `ycrc-debugging` (reproduce, inspect evidence, fix the cause, verify), `ycrc-research-file-safety` (check ownership and provenance before destroying possibly irreplaceable research files, without gating routine edits), `ycrc-research-analysis` (make filters and joins visible, leave consequential scientific choices to the researcher, never present unverified results), and `ycrc-handoff` (a `HANDOFF.md` written only on request, for continuing in a new session or another harness). `bouchet-easybuild-admin` is for YCRC administrators only: it checks that the account is in the `support` group (others are directed to a support ticket) and that the agent was launched at the root of a `ycrc-ebfiles` clone, then prepares easyconfigs and runs test builds as Slurm jobs into `software_builds/test-install/`; it never installs into `/apps`.

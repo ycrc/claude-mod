@@ -51,7 +51,7 @@ Give every step its turn. Don't fold the remaining steps into a closing summary 
 3. **Where work runs:** login nodes versus compute nodes; interactive (`salloc`) versus batch (`sbatch`); choosing a partition.
 4. **Software:** finding modules; Python and R through Conda.
 5. **First job, then efficiency:** a tiny test job, then a ~10-minute exercise job that deliberately over-requests, read together with Jobstats (in Open WebUI, with the usage graph) to learn right-sizing.
-6. **GPUs:** ask whether their work needs GPUs (model training, deep learning, GPU-accelerated software). If it does, cover the GPU partitions and types from live data, how to request a GPU, starting with the smallest GPU that fits, interactive GPU work in `gpu_devel` only, checking the GPU is visible, and that jobs whose GPUs sit idle are cancelled; then route depth to `bouchet-gpu`. If it doesn't, say so in a sentence and mark the step skipped.
+6. **GPUs:** ask whether their work needs GPUs (model training, deep learning, GPU-accelerated software). If it does, cover the GPU partitions and types from live data, how to request a GPU, starting with the smallest GPU that fits, interactive GPU work in `gpu_devel` only, checking the GPU is visible, and that jobs whose GPUs sit idle are cancelled; then route depth to `ycrc-gpu`. If it doesn't, say so in a sentence and mark the step skipped.
 7. **Web portal:** the Open OnDemand apps that fit their goal. When they open one (for example Jupyter with their environment), make it hands-on: have them use it for a minute (see `references/bouchet-essentials.md`) and close it when done, rather than treating the launch as the end of the step.
 8. **Moving data:** the transfer node and Globus, if they have data elsewhere.
 9. **AI tools:** coding agents, Open WebUI, and `module load ycrc-llm` for their own scripts, if relevant.
@@ -62,12 +62,12 @@ Give every step its turn. Don't fold the remaining steps into a closing summary 
 
 Keep onboarding short; when a step needs depth, use the skill for it:
 
-- Storage and quotas: `bouchet-storage`; scratch purge: `bouchet-scratch`
-- Modules: `bouchet-modules`; Python and Conda: `bouchet-conda`; R: `bouchet-r`
-- Notebooks and the portal's Jupyter app: `bouchet-jupyter`
-- Jobs and partitions: `bouchet-slurm`; problems with jobs: `bouchet-job-troubleshooting`
-- GPUs: `bouchet-gpu`; many similar jobs: `bouchet-dsq-arrays`; parallel work: `bouchet-parallel`
-- Their research data and analysis: `bouchet-research-file-safety`, `bouchet-research-analysis`
+- Storage and quotas: `ycrc-storage`; scratch purge: `ycrc-scratch`
+- Modules: `ycrc-modules`; Python and Conda: `ycrc-conda`; R: `ycrc-r`
+- Notebooks and the portal's Jupyter app: `ycrc-jupyter`
+- Jobs and partitions: `ycrc-slurm`; problems with jobs: `ycrc-job-troubleshooting`
+- GPUs: `ycrc-gpu`; many similar jobs: `ycrc-dsq-arrays`; parallel work: `ycrc-parallel`
+- Their research data and analysis: `ycrc-research-file-safety`, `ycrc-research-analysis`
 
 ## Facts that are easy to get wrong
 

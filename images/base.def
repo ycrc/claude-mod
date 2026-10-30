@@ -3,13 +3,14 @@ From: rockylinux:9
 
 # Shared base for the four harness images (images/<harness>.def). Everything
 # the harnesses have in common lives here -- runtime tooling, the canonical
-# administrator policy and skills, the slurm account -- so that each harness
+# administrator policy, the slurm account -- so that each harness
 # image only adds its own client and can be upgraded on its own. Build with
 # images/build.sh, run from the repository root.
 
 %files
+    # The launcher binds the module's AGENTS.md over this copy, and the skills
+    # come from the module or the shared skills checkout, never the image.
     AGENTS.md /etc/agents/AGENTS.md
-    etc/agents/skills /etc/agents/skills
     images/base-test.sh /usr/local/libexec/coding-agents-base-test.sh
 
 %environment

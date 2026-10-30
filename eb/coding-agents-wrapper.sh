@@ -10,7 +10,13 @@ provider_config="${launcher_dir}/coding-agents-provider.conf"
 codex_config="${launcher_dir}/codex-config.toml"
 pi_models_config="${launcher_dir}/pi-models.json"
 site_agents_dir="${launcher_dir}/share/agents"
-site_skills_dir="${site_agents_dir}/skills"
+bundled_skills_dir="${site_agents_dir}/skills"
+# YCRC's skills are maintained centrally (github.com/ycrc/yale-ycrc-skills) and
+# deployed, already rendered for each cluster, to a shared checkout. Sessions
+# use that live copy, so skill updates need no module release; the copy
+# bundled with this module is the fallback when the live one is unavailable.
+# YCRC_SKILLS_DIR overrides both (testing).
+live_skills_dir="/apps/services/yale-ycrc-skills/build/bouchet/skills"
 site_subagents_dir="${site_agents_dir}/subagents"
 site_pi_subagents_dir="${site_agents_dir}/pi-subagents"
 
@@ -316,7 +322,15 @@ mkdir -p -- \
 # the shared policy and skills. Because /apps is bound read-only into the
 # container, these paths resolve both from a normal shell and from a harness.
 [[ -r "${site_agents_dir}/AGENTS.md" ]] || { echo "Error: missing site policy: ${site_agents_dir}/AGENTS.md" >&2; exit 1; }
-[[ -d "$site_skills_dir" ]] || { echo "Error: missing site skills: $site_skills_dir" >&2; exit 1; }
+if [[ -n "${YCRC_SKILLS_DIR:-}" ]]; then
+    site_skills_dir="$YCRC_SKILLS_DIR"
+elif compgen -G "${live_skills_dir}/*/SKILL.md" >/dev/null; then
+    site_skills_dir="$live_skills_dir"
+else
+    site_skills_dir="$bundled_skills_dir"
+fi
+site_skills_dir="$(cd -- "$site_skills_dir" 2>/dev/null && pwd -P)" ||
+    { echo "Error: missing site skills: ${YCRC_SKILLS_DIR:-$bundled_skills_dir}" >&2; exit 1; }
 
 # --- BEGIN user configuration import ---
 # Users' normal harness configuration (~/.claude, ~/.codex, ~/.pi/agent,
@@ -623,12 +637,28 @@ install_instructions "${pi_home}/AGENTS.md" "${user_pi_dir}/AGENTS.md"
 install_instructions "${copilot_home}/copilot-instructions.md" "${user_copilot_dir}/copilot-instructions.md"
 # --- END user configuration import ---
 
-# Claude and Pi get real, user-writable skill directories. The YCRC-managed
-# skills are linked into those directories individually, so users can inspect
-# the managed skills from the host and add their own skills alongside them.
+# Claude, Codex and Pi get real, user-writable skill directories. The
+# YCRC-managed skills are linked into those directories individually, so users
+# can inspect the managed skills from the host and add their own skills
+# alongside them.
+#
+# A link is managed if it points into a skills tree of a coding-agents module
+# or of the shared skills checkout. Managed links to skills that are no longer
+# current (renamed, removed, or from another release) are removed, so a session
+# never sees two versions of a skill; the user's own skills and links are left
+# alone.
+is_managed_skill_link() {
+    local link_target
+    link_target="$(readlink -- "$1" 2>/dev/null)" || return 1
+    case "$link_target" in
+        /etc/agents/skills/*|/apps/services/yale-ycrc-skills/*|*/software/*-local/*/share/agents/skills/*) return 0 ;;
+    esac
+    [[ -n "${YCRC_SKILLS_DIR:-}" && "$link_target" == "$site_skills_dir"/* ]]
+}
+
 link_site_skills_non_destructive() {
     local target_root="$1"
-    local skill_source skill_name target_skill
+    local skill_source skill_name target_skill existing
 
     if [[ -L "$target_root" ]]; then
         # Older releases made the entire skills directory a symlink to
@@ -648,6 +678,14 @@ link_site_skills_non_destructive() {
     fi
     mkdir -p -- "$target_root"
 
+    for existing in "$target_root"/*; do
+        [[ -L "$existing" ]] || continue
+        if is_managed_skill_link "$existing" &&
+           [[ "$(readlink -- "$existing")" != "${site_skills_dir}/$(basename -- "$existing")" ]]; then
+            rm -f -- "$existing"
+        fi
+    done
+
     for skill_source in "$site_skills_dir"/*; do
         [[ -d "$skill_source" ]] || continue
         skill_name="$(basename -- "$skill_source")"
@@ -665,6 +703,7 @@ link_site_skills_non_destructive() {
 }
 
 link_site_skills_non_destructive "${claude_config_dir}/skills"
+link_site_skills_non_destructive "${codex_home}/skills"
 link_site_skills_non_destructive "${pi_home}/skills"
 
 # YCRC-managed Claude subagents. These let a session delegate work to a
@@ -1430,6 +1469,10 @@ bind_opts+=(--bind "${claude_config_file}:${host_home}/.claude.json")
 bind_opts+=("${configured_bind_opts[@]}")
 bind_opts+=("${user_bind_opts[@]}")
 
+# The image's /etc/agents/AGENTS.md (Claude's managed CLAUDE.md links to it)
+# is replaced by this module's policy, so a policy change needs no new image.
+bind_opts+=(--bind "${site_agents_dir}/AGENTS.md:/etc/agents/AGENTS.md:ro")
+
 # Remove host-controlled Apptainer mechanisms that can add mounts or inject
 # container environment variables. In particular, APPTAINER_BIND/BINDPATH/MOUNT
 # would otherwise bypass the wrapper's approved bind list.
@@ -1448,6 +1491,10 @@ unset \
 
 client_env_opts=()
 client_args=()
+
+# Lets the shared YCRC skills tell this sandbox from other places they run
+# (plain Claude Code, other YCRC agent sandboxes).
+client_env_opts+=(--env "YCRC_LOCAL_CODING_AGENTS=1")
 
 # renv's default package cache (~/.cache/R/renv) would land in the container's
 # small temporary home and be lost with the session. Keep it under the
@@ -1588,7 +1635,7 @@ PY
             --env "COPILOT_MODEL=${agent_model}"
             --env "COPILOT_PROVIDER_MAX_PROMPT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
             --env "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
-            --env "COPILOT_SKILLS_DIRS=/etc/agents/skills"
+            --env "COPILOT_SKILLS_DIRS=${site_skills_dir}"
             --env "COPILOT_ALLOW_ALL=true"
             --env "COPILOT_OFFLINE=true"
         )

@@ -47,8 +47,8 @@ The exercises' sections map onto the checklist:
 | Transfer data (`ssh transfer`, copy `/apps/data/training/Intro-to-HPC` to `~/project/$USER/workshop`) | 8 | On Bouchet the data path is `/apps/data/training`. |
 | Understanding quotas (`getquota`) | 2 | In an agent session, run it as `srun --overlap --ntasks=1 getquota` (see `bouchet-essentials.md`). |
 | Running Python (`salloc`, `module load Python`, the interactive example) | 3, 4 | Teach Conda instead of `module load Python`: Python modules are dependencies of other software, not for users. Do the Miniconda row first and run the example in that environment. |
-| Installing packages with Miniconda (`conda create -n myenv ...`) | 4 | Follows `bouchet-conda`: create the environment with `python` and `uv`, then install packages with `uv pip install`. |
-| Conda with Jupyter in the portal (`notebook`, `ycrc_conda_env.sh update`) | 7 | Follows `bouchet-jupyter`, including Develop -> Restart Web Server. |
+| Installing packages with Miniconda (`conda create -n myenv ...`) | 4 | Follows `ycrc-conda`: create the environment with `python` and `uv`, then install packages with `uv pip install`. |
+| Conda with Jupyter in the portal (`notebook`, `ycrc_conda_env.sh update`) | 7 | Follows `ycrc-jupyter`, including Develop -> Restart Web Server. |
 
 Then do the first job (step 5) with `first-job.sh` from `bouchet-essentials.md`: the user writes it from the template, you check it with `sbatch --test-only` (or `check_job_script` in Open WebUI), they submit it, and you read the result together. Then the efficiency exercise (`efficiency-test.sh` in `bouchet-essentials.md`): they submit it, run `jobstats <jobid>` when it ends and paste the report, and you explain it (in Open WebUI, show the usage graph).
 

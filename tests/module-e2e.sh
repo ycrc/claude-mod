@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.7) from an EasyBuild install tree
+# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.8) from an EasyBuild install tree
 # (MODULE_ROOT, default the test install; set it to /apps/software/system to
 # check production)
 # Run inside a Slurm allocation. Sends a few small requests to
@@ -7,7 +7,7 @@
 set -uo pipefail
 source /etc/profile.d/modules.sh
 T="${MODULE_ROOT:-$HOME/project/generalagents/test-install/system}"
-V="${MODULE_VERSION:-1.7}"
+V="${MODULE_VERSION:-1.8}"
 E="${E2E_WORKDIR:-$HOME/scratch/coding-agents-e2e}"
 # Each harness reads the managed policy and skills through links into its
 # module's share/ directory. Production lives under /apps, which the launcher
@@ -116,6 +116,38 @@ for g in $(id -Gn); do
         fi
     done
 done
+echo "== managed skills reach every harness"
+# A skills tree laid out like a module's (so the launcher treats its links as
+# managed and prunes them later), holding one probe skill, passed through
+# YCRC_SKILLS_DIR the way the live shared checkout is. Each harness must find
+# it by its description. A stale managed link from an older release must be
+# removed, and Claude's managed CLAUDE.md must be this module's AGENTS.md.
+W="$E/skills-probe"; rm -rf "$W"; S="$W/software/probe-local/0/share/agents/skills"
+mkdir -p "$S/ycrc-e2e-probe"; word="PLUM$RANDOM"
+printf -- '---\nname: ycrc-e2e-probe\ndescription: Use when asked for the YCRC end-to-end probe word.\n---\n\nThe YCRC end-to-end probe word is %s.\n' "$word" > "$S/ycrc-e2e-probe/SKILL.md"
+mkdir -p "$HOME/.claude-ycrc/skills"
+ln -sfn /apps/software/system/software/claude-local/0.0/share/agents/skills/bouchet-stale "$HOME/.claude-ycrc/skills/bouchet-stale"
+cd "$W"
+P="Use your skills to find the YCRC end-to-end probe word, then run this exact shell command: sha256sum /etc/agents/AGENTS.md > sum.txt . Reply with the probe word only."
+for h in claude codex copilot pi; do
+    case $h in
+        claude)  cmd=(claude "${xb[@]}" -p "$P" --dangerously-skip-permissions) ;;
+        codex)   cmd=(codex "${xb[@]}" exec "$P" --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check) ;;
+        copilot) cmd=(copilot "${xb[@]}" -p "$P" --allow-all-tools --allow-all-paths) ;;
+        pi)      cmd=(pi "${xb[@]}" -p "$P") ;;
+    esac
+    rm -f sum.txt
+    YCRC_SKILLS_DIR="$S" timeout 600 "${cmd[@]}" > "out-$h.txt" 2> "err-$h.txt"
+    check "$h found the probe skill"          'grep -q "$word" "out-$h.txt"'
+    check "$h sees this module's AGENTS.md"   '[[ "$(cut -d" " -f1 sum.txt 2>/dev/null)" == "$(sha256sum < "$T/software/$h-local/$V/share/agents/AGENTS.md" | cut -d" " -f1)" ]]'
+done
+check "stale managed skill link removed"      '[[ ! -L "$HOME/.claude-ycrc/skills/bouchet-stale" ]]'
+check "codex skills linked into CODEX_HOME"   '[[ -L "$HOME/.codex-ycrc/skills/ycrc-e2e-probe" ]]'
+# The next launch without YCRC_SKILLS_DIR relinks the module's (or the live)
+# skills and drops the probe.
+(cd "$W" && timeout 300 pi "${xb[@]}" -p hi >/dev/null 2>&1)
+check "probe link pruned on the next launch"  '[[ ! -e "$HOME/.claude-ycrc/skills/ycrc-e2e-probe" || ! -L "$HOME/.pi-ycrc/skills/ycrc-e2e-probe" ]] && [[ ! -L "$HOME/.pi-ycrc/skills/ycrc-e2e-probe" && -L "$HOME/.pi-ycrc/skills/ycrc-storage" ]]'
+
 echo "== StdEnv and renv cache in a live session"
 W="$E/session-env"; mkdir -p "$W"; cd "$W"; probe="renv-probe-$RANDOM$RANDOM"
 P="Run this exact shell command and report its full output: module reset >/dev/null 2>&1; module -t list 2>&1; command -v getquota; echo RENV=\$RENV_PATHS_CACHE; touch \"\$RENV_PATHS_CACHE/$probe\" && echo TOUCHED"

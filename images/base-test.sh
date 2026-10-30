@@ -13,11 +13,8 @@ command -v node
 command -v python
 python -m pytest --version
 test -f /etc/agents/AGENTS.md
-for skill in onboarding storage conda jupyter r slurm parallel job-troubleshooting dsq-arrays gpu \
-             priority scavenge apptainer alphafold cryosparc mpi scratch modules easybuild-admin; do
-    test -f "/etc/agents/skills/bouchet-${skill}/SKILL.md"
-done
-test -x /etc/agents/skills/bouchet-easybuild-admin/scripts/check-admin-env.sh
+# Skills are not baked into the images (see the launcher).
+test ! -e /etc/agents/skills
 locale -a | grep -qi "^en_US.utf8$"
 getent passwd slurm
 test -e /usr/lib64/libmunge.so.2

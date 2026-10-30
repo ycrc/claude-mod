@@ -17,7 +17,7 @@ for name in $names; do
     check "$name: has a description"                 'grep -q "^description: ..*" "$f"'
     check "$name: listed in AGENTS.md"               'grep -q "^- \`$name\`" AGENTS.md'
 done
-listed="$(sed -n 's/^- `\(bouchet-[a-z-]*\)`.*/\1/p' AGENTS.md)"
+listed="$(sed -n 's/^- `\(\(ycrc\|bouchet\)-[a-z-]*\)`.*/\1/p' AGENTS.md)"
 for name in $listed; do
     check "AGENTS.md entry $name has a skill"        '[[ -d "$skills/$name" ]]'
 done
@@ -29,7 +29,7 @@ check "agent-allocation rule in AGENTS.md"       'grep -q "Do not request anothe
 # Commands in examples: a line that starts with the command, not prose about it.
 check "no module purge in examples"              '! grep -nE "^\s*(\\$ )?module (--force )?purge" "${text_files[@]}"'
 check "no module unload guidance"                '! grep -n "module unload" "${text_files[@]}" | grep -v "unload StdEnv"'
-check "scontrol update only as Priority Tier gate" '[[ -z "$(grep -ln "scontrol update" "${text_files[@]}" | grep -v -e bouchet-priority/SKILL.md -e bouchet-cryosparc/SKILL.md)" ]]'
+check "scontrol update only as Priority Tier gate" '[[ -z "$(grep -ln "scontrol update" "${text_files[@]}" | grep -v -e ycrc-priority/SKILL.md -e ycrc-cryosparc/SKILL.md -e ycrc-priority/references -e ycrc-cryosparc/references)" ]]'
 check "no agent-partition job requests"          '! grep -nE -- "(-p ?|--partition[= ])agent\b" "${text_files[@]}"'
 check "no lab-specific paths"                    '! grep -n -i -e "pi_jm284" -e musser "${text_files[@]}"'
 
