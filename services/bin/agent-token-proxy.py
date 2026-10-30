@@ -1419,6 +1419,10 @@ async def proxy(request: web.Request):
                 rejected = False
                 try:
                     err = chunk[:300].decode("utf-8", errors="ignore").replace("\n", " ")
+                    # Validation errors echo the offending value ('input': ...),
+                    # which can be user text: keep only the error, never values.
+                    err = re.sub(r"""['"]input['"]\s*:\s*(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^,}]*)""",
+                                 "'input': <redacted>", err)
                     log(f"rejected 400 {path} {netid}/{agent} model={model}: "
                         f"{err[:200]} | parts: {request_shape(body)[:1500]}")
                 except Exception:
