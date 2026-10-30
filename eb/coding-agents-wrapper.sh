@@ -1473,7 +1473,7 @@ bind_opts+=("${user_bind_opts[@]}")
 # is replaced by this module's policy, so a policy change needs no new image.
 bind_opts+=(--bind "${site_agents_dir}/AGENTS.md:/etc/agents/AGENTS.md:ro")
 # The managed skills also appear at the fixed path /etc/agents/skills, so a
-# skill can name its own scripts (bouchet-easybuild-admin) whichever tree,
+# skill can name its own scripts (ycrc-easybuild-admin) whichever tree,
 # live or bundled, is in use.
 bind_opts+=(--bind "${site_skills_dir}:/etc/agents/skills:ro")
 

@@ -1,4 +1,4 @@
-# YCRC EasyBuild reference (Bouchet)
+# YCRC EasyBuild reference
 
 EasyBuild docs: https://docs.easybuild.io. YCRC as-built configs, easyblocks, hooks and
 site configs: `github.com/ycrc/ycrc-ebfiles`. Community configs:
@@ -7,7 +7,7 @@ module and on the default robot path). Cluster docs: `github.com/ycrc/ycrc.githu
 
 ## Configuration and layout
 
-- Site config: `siteconfigs/bouchet.cfg` (copied to `~/.config/easybuild/config.cfg`
+- Site config: `siteconfigs/$CLUSTER.cfg`, e.g. `siteconfigs/bouchet.cfg` (copied to `~/.config/easybuild/config.cfg`
   on admin accounts). Lua modules, Lmod, `minimal-toolchains`, `use-existing-modules`,
   `optarch` x86-64-v4, sources in `/apps/sources`, build in `/dev/shm/$USER`.
 - `hooks/ycrc_hooks.py` routes installs by toolchain generation: the configured
@@ -20,7 +20,7 @@ module and on the default robot path). Cluster docs: `github.com/ycrc/ycrc.githu
   `/apps` or `easyconfigs/`. (Passing `--installpath` on the command line instead keeps
   routing, but still copies the easyconfig into `easyconfigs/` and rebuilds the
   production Lmod cache. Avoid it for tests.)
-- Inside the coding-agent sandbox the user's `~/.config/easybuild` is not visible;
+- Inside an agent sandbox the user's `~/.config/easybuild` is not visible;
   EasyBuild would silently fall back to defaults under `~/.local/easybuild`. Always use
   `eb-test-env.sh`. It also:
   - runs `module reset` first, keeping `StdEnv` (as `testing()` cleans up): with `detect-loaded-modules = purge`
@@ -30,10 +30,10 @@ module and on the default robot path). Cluster docs: `github.com/ycrc/ycrc.githu
     container's `/tmp` and `/dev/shm` vanish when the agent exits;
   - falls back to `LC_ALL=C.UTF-8` if the session's locale is missing (a `setlocale`
     warning on stderr breaks EasyBuild's `ulimit -u` check).
-- Compile only through `--job`. The sandbox image is not a build host: it lacks the
+- Compile only through `--job`. An agent sandbox image is not a build host: it lacks the
   compute nodes' development packages (even `C compiler cannot create executables`
   for GCCcore builds). Dry runs (`-D`), `--search`, checksum injection and editing are
-  fine in the sandbox.
+  fine in a sandbox.
 
 ## Easyconfig conventions
 

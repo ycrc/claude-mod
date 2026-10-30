@@ -10,7 +10,7 @@ When one of them conflicts with this policy, follow this policy instead and say 
 
 ## Bouchet skills
 
-Detailed workflows are installed as administrator-owned skills, maintained centrally by YCRC and exposed to each harness from the managed YCRC skill tree. Each skill includes Bouchet's facts (partitions, limits, paths) where they matter; `bouchet-*` skills are for Bouchet only. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `bouchet-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
+Detailed workflows are installed as administrator-owned skills, maintained centrally by YCRC and exposed to each harness from the managed YCRC skill tree. Each skill includes Bouchet's facts (partitions, limits, paths) where they matter; `bouchet-*` skills are for Bouchet only. Use the relevant skill when a task involves storage, modules, Conda/Python, Jupyter notebooks, R, Slurm, CPU parallelism, MPI, job troubleshooting, dSQ/job arrays, GPUs, Priority Tier, scavenge, Apptainer, AlphaFold, CryoSPARC, scratch retention, or building central software with EasyBuild (requests to build or install software for /apps go through `ycrc-easybuild-admin`, which checks whether the account may do so). General research skills cover debugging, changes to research files, data analysis decisions, and session handoffs. Do not load every skill at startup.
 
 When a user is new to Bouchet or asks how to get started, use `bouchet-onboarding`. When a request shows signs that the user is new to Bouchet (for example they guess paths like `/project` or `/scratch`, want to run heavy work on a login node, or ask what resources to use), first do what they asked as usual, then end your reply with one sentence offering a guided getting-started walkthrough (`bouchet-onboarding`). Offer it once per session; if they decline, drop it.
 
@@ -34,7 +34,7 @@ Available skills include:
 - `ycrc-mpi`
 - `ycrc-scratch`
 - `ycrc-cluster`
-- `bouchet-easybuild-admin` (YCRC administrators; others are directed to a support ticket)
+- `ycrc-easybuild-admin` (YCRC administrators; others are directed to a support ticket)
 - `ycrc-debugging`
 - `ycrc-research-file-safety`
 - `ycrc-research-analysis`
@@ -59,7 +59,7 @@ These coding-agent restrictions supplement YCRC policy. If a requested action co
 
 This module is for ordinary Bouchet user accounts and is intentionally configured for high autonomy inside the administrator-managed containment boundary. Routine user-scoped operations such as file deletion, process termination, Slurm submission, and cancellation of jobs the user is authorized to cancel may run without an approval prompt.
 
-Autonomy does not expand privileges. Unix permissions, Slurm authorization, the launcher bind policy, read-only mounts, and the rules in this file still apply. Never act on another user's jobs or data. Privileged YCRC administrator workflows require a separate administrative agent profile and are not part of this module. The one exception is preparing and test-building central software with the `bouchet-easybuild-admin` skill, which itself verifies that the account is in the YCRC support group and directs everyone else to a support ticket; even then the agent never installs into `/apps` (production builds are run by the administrator outside the agent).
+Autonomy does not expand privileges. Unix permissions, Slurm authorization, the launcher bind policy, read-only mounts, and the rules in this file still apply. Never act on another user's jobs or data. Privileged YCRC administrator workflows require a separate administrative agent profile and are not part of this module. The one exception is preparing and test-building central software with the `ycrc-easybuild-admin` skill, which itself verifies that the account is in the YCRC support group and directs everyone else to a support ticket; even then the agent never installs into `/apps` (production builds are run by the administrator outside the agent).
 
 ## Shell tool calls are isolated
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Gate for the bouchet-easybuild-admin skill. Run from the agent's working
+# Gate for the ycrc-easybuild-admin skill. Run from the agent's working
 # directory. Exit status:
 #    0  OK: YCRC support account, at the root of a ycrc-ebfiles clone
 #   10  the account is not in the YCRC "support" group
@@ -16,8 +16,8 @@ if ! getent group support | cut -d: -f4 | tr ',' '\n' | grep -qx "$user"; then
 fi
 here="$(pwd -P)"
 top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [[ "$top" != "$here" || ! -f siteconfigs/bouchet.cfg || ! -f hooks/ycrc_hooks.py ]]; then
-    echo "NOT-EBFILES: $here is not the root of a ycrc-ebfiles clone."
+if [[ "$top" != "$here" || ! -f "siteconfigs/${CLUSTER:-}.cfg" || ! -f hooks/ycrc_hooks.py ]]; then
+    echo "NOT-EBFILES: $here is not the root of a ycrc-ebfiles clone${CLUSTER:+ with siteconfigs/$CLUSTER.cfg}${CLUSTER:-, or \$CLUSTER is not set}."
     exit 11
 fi
 echo "OK: $user (support) at ycrc-ebfiles clone $here"

@@ -1,16 +1,16 @@
 # Source (do not execute), from the root of a ycrc-ebfiles clone, in the SAME
 # shell command as the eb calls that follow:
 #
-#   source /etc/agents/skills/bouchet-easybuild-admin/scripts/eb-test-env.sh && eb ...
+#   source <skill-dir>/scripts/eb-test-env.sh && eb ...
 #
-# Configures EasyBuild for a TEST build with the team's siteconfigs/bouchet.cfg,
+# Configures EasyBuild for a TEST build with the team's siteconfigs/$CLUSTER.cfg (e.g. bouchet.cfg),
 # hooks and easyconfigs from this clone, but sends every write under
 # software_builds/test-install/: the install tree, the post-build easyconfig
 # copy (repositorypath), and source downloads. Setting EASYBUILD_INSTALLPATH is
 # the YCRC hooks' testing mode: they skip generation-based install routing and
 # the Lmod cache rebuild. Nothing is written to /apps or to easyconfigs/.
-if [[ ! -f siteconfigs/bouchet.cfg || ! -f hooks/ycrc_hooks.py ]]; then
-    echo "eb-test-env: run from the root of a ycrc-ebfiles clone" >&2
+if [[ -z "${CLUSTER:-}" || ! -f "siteconfigs/${CLUSTER}.cfg" || ! -f hooks/ycrc_hooks.py ]]; then
+    echo "eb-test-env: run from the root of a ycrc-ebfiles clone (needs \$CLUSTER and siteconfigs/\$CLUSTER.cfg)" >&2
     return 1 2>/dev/null || exit 1
 fi
 _ebt_here="$(pwd -P)"
@@ -31,7 +31,7 @@ fi
 # so `eb --job` submits jobs that cannot find eb. module reset keeps StdEnv.
 module reset >/dev/null 2>&1
 module load EasyBuild/5.4.0 || { return 1 2>/dev/null || exit 1; }
-export EASYBUILD_CONFIGFILES="$_ebt_here/siteconfigs/bouchet.cfg"
+export EASYBUILD_CONFIGFILES="$_ebt_here/siteconfigs/${CLUSTER}.cfg"
 export EASYBUILD_ROBOT_PATHS="$_ebt_here/easyconfigs:$EBROOTEASYBUILD/easybuild/easyconfigs"
 export EASYBUILD_HOOKS="$_ebt_here/hooks/ycrc_hooks.py"
 export EASYBUILD_INSTALLPATH="$_ebt_root"
