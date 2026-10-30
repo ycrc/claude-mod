@@ -1476,6 +1476,12 @@ bind_opts+=(--bind "${site_agents_dir}/AGENTS.md:/etc/agents/AGENTS.md:ro")
 # skill can name its own scripts (ycrc-easybuild-admin) whichever tree,
 # live or bundled, is in use.
 bind_opts+=(--bind "${site_skills_dir}:/etc/agents/skills:ro")
+# The per-skill links name the tree by its host path. /apps is bound already;
+# a tree elsewhere (YCRC_SKILLS_DIR, for testing) is bound read-only too, so
+# the links do not dangle inside the container.
+if [[ "$site_skills_dir" != /apps/* ]]; then
+    bind_opts+=(--bind "${site_skills_dir}:${site_skills_dir}:ro")
+fi
 
 # Remove host-controlled Apptainer mechanisms that can add mounts or inject
 # container environment variables. In particular, APPTAINER_BIND/BINDPATH/MOUNT
