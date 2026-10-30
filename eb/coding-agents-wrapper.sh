@@ -1504,6 +1504,10 @@ case "$agent" in
             # (52 failures, 2026-10-29).
             --env "CLAUDE_CODE_MAX_CONTEXT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
             --env "CLAUDE_CODE_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
+            # Compact at 85% of the prompt budget (~209K) rather than at the
+            # limit: shorter contexts answer faster, and a turn that pulls in
+            # a large file still has room before the hard cap above.
+            --env "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=${YCRC_CLAUDE_AUTOCOMPACT_PCT:-85}"
         )
         # Claude's file tools only work in its working directory and the
         # directories it is given. The = form keeps --add-dir, which takes
