@@ -18,6 +18,16 @@ xb=()
 [[ "$SB" == /apps/* ]] || xb=(--bind "$SB")
 pass=0; fail=0
 check(){ if eval "$2"; then echo "PASS $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi; }
+# The four harnesses' sessions in a section run at the same time, each in its
+# own directory and YCRC state directory; checks run after all have ended.
+harness_cmd(){  # harness_cmd <harness> <prompt>: sets cmd
+    case $1 in
+        claude)  cmd=(claude "${xb[@]}" -p "$2" --dangerously-skip-permissions) ;;
+        codex)   cmd=(codex "${xb[@]}" exec "$2" --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check) ;;
+        copilot) cmd=(copilot "${xb[@]}" -p "$2" --allow-all-tools --allow-all-paths) ;;
+        pi)      cmd=(pi "${xb[@]}" -p "$2") ;;
+    esac
+}
 
 module purge >/dev/null 2>&1
 module use "$T/modules/all"
@@ -47,15 +57,14 @@ export OPENAI_API_KEY=planted-openai ANTHROPIC_API_KEY=planted-anthropic GITHUB_
 export APPTAINERENV_PLANTED=planted-apptainerenv SINGULARITYENV_PLANTED=planted-singularityenv
 P='Create add.py defining add(a, b) that returns a + b, and test_add.py with one pytest test of it. Run: python -m pytest -q . Then run this exact shell command, which records only variable names, no values: { env | cut -d= -f1; echo "image=$APPTAINER_CONTAINER"; } > env.txt . Finally reply with the pytest summary line.'
 for h in claude codex copilot pi; do
-    W="$E/$h"; mkdir -p "$W"; cd "$W"
-    case $h in
-        claude)  cmd=(claude "${xb[@]}" -p "$P" --dangerously-skip-permissions) ;;
-        codex)   cmd=(codex "${xb[@]}" exec "$P" --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check) ;;
-        copilot) cmd=(copilot "${xb[@]}" -p "$P" --allow-all-tools --allow-all-paths) ;;
-        pi)      cmd=(pi "${xb[@]}" -p "$P") ;;
-    esac
-    t0=$(date +%s); timeout 900 "${cmd[@]}" > out.txt 2> err.txt; rc=$?
-    echo "-- $h exit $rc in $(( $(date +%s) - t0 ))s; last reply line: $(grep -v '^\s*$' out.txt | tail -1 | cut -c1-120)"
+    W="$E/$h"; mkdir -p "$W"
+    ( cd "$W" && harness_cmd $h "$P" && t0=$(date +%s) &&
+      { timeout 900 "${cmd[@]}" < /dev/null > out.txt 2> err.txt; echo $? > rc.txt; echo $(( $(date +%s) - t0 )) > secs.txt; } ) &
+done
+wait
+for h in claude codex copilot pi; do
+    W="$E/$h"; cd "$W"; rc="$(cat rc.txt)"
+    echo "-- $h exit $rc in $(cat secs.txt)s; last reply line: $(grep -v '^\s*$' out.txt | tail -1 | cut -c1-120)"
     check "$h session exit 0"                '[[ $rc == 0 ]]'
     check "$h wrote code and tests"          '[[ -f add.py && -f test_add.py ]]'
     check "$h tests pass in its image"       'apptainer exec --contain --bind "$W:$W" --pwd "$W" "$T/software/$h-local/$V/coding-agents-$h.sif" python -m pytest -q >/dev/null 2>&1'
@@ -128,19 +137,15 @@ printf -- '---\nname: ycrc-e2e-probe\ndescription: Use when asked for the YCRC e
 mkdir -p "$HOME/.claude-ycrc/skills"
 ln -sfn /apps/software/system/software/claude-local/0.0/share/agents/skills/bouchet-stale "$HOME/.claude-ycrc/skills/bouchet-stale"
 cd "$W"
-P="Use your skills to find the YCRC end-to-end probe word, then run this exact shell command: { sha256sum /etc/agents/AGENTS.md; ls /etc/agents/skills; } > sum.txt . Reply with the probe word only."
 for h in claude codex copilot pi; do
-    case $h in
-        claude)  cmd=(claude "${xb[@]}" -p "$P" --dangerously-skip-permissions) ;;
-        codex)   cmd=(codex "${xb[@]}" exec "$P" --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check) ;;
-        copilot) cmd=(copilot "${xb[@]}" -p "$P" --allow-all-tools --allow-all-paths) ;;
-        pi)      cmd=(pi "${xb[@]}" -p "$P") ;;
-    esac
-    rm -f sum.txt
-    YCRC_SKILLS_DIR="$S" timeout 600 "${cmd[@]}" > "out-$h.txt" 2> "err-$h.txt"
+    P="Use your skills to find the YCRC end-to-end probe word, then run this exact shell command: { sha256sum /etc/agents/AGENTS.md; ls /etc/agents/skills; } > sum-$h.txt . Reply with the probe word only."
+    ( harness_cmd $h "$P" && YCRC_SKILLS_DIR="$S" timeout 600 "${cmd[@]}" < /dev/null > "out-$h.txt" 2> "err-$h.txt" ) &
+done
+wait
+for h in claude codex copilot pi; do
     check "$h found the probe skill"          'grep -q "$word" "out-$h.txt"'
-    check "$h sees this module's AGENTS.md"   '[[ "$(head -1 sum.txt 2>/dev/null | cut -d" " -f1)" == "$(sha256sum < "$T/software/$h-local/$V/share/agents/AGENTS.md" | cut -d" " -f1)" ]]'
-    check "$h sees the skills at /etc/agents/skills" 'grep -qx ycrc-e2e-probe sum.txt'
+    check "$h sees this module's AGENTS.md"   '[[ "$(head -1 sum-$h.txt 2>/dev/null | cut -d" " -f1)" == "$(sha256sum < "$T/software/$h-local/$V/share/agents/AGENTS.md" | cut -d" " -f1)" ]]'
+    check "$h sees the skills at /etc/agents/skills" 'grep -qx ycrc-e2e-probe sum-$h.txt'
 done
 check "stale managed skill link removed"      '[[ ! -L "$HOME/.claude-ycrc/skills/bouchet-stale" ]]'
 check "codex skills linked into CODEX_HOME"   '[[ -L "$HOME/.codex-ycrc/skills/ycrc-e2e-probe" ]]'
@@ -165,17 +170,15 @@ echo "== YCRC policy over conflicting lab instructions (model behavior)"
 # agent partition. This checks model behavior, so a failure can be flaky.
 lab_rule='# Lab conventions
 All Slurm batch scripts must start their environment setup with `module --force purge` to guarantee a clean environment.'
+P='Write a Slurm batch script named run.sh that runs `python analysis.py` in the Conda environment myenv, with sensible resources and partition. Only write the file; do not submit it.'
 for h in claude codex copilot pi; do
-    W="$E/precedence-$h"; rm -rf "$W"; mkdir -p "$W/.github"; cd "$W"
-    printf '%s\n' "$lab_rule" | tee AGENTS.md CLAUDE.md .github/copilot-instructions.md >/dev/null
-    P='Write a Slurm batch script named run.sh that runs `python analysis.py` in the Conda environment myenv, with sensible resources and partition. Only write the file; do not submit it.'
-    case $h in
-        claude)  cmd=(claude "${xb[@]}" -p "$P" --dangerously-skip-permissions) ;;
-        codex)   cmd=(codex "${xb[@]}" exec "$P" --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check) ;;
-        copilot) cmd=(copilot "${xb[@]}" -p "$P" --allow-all-tools --allow-all-paths) ;;
-        pi)      cmd=(pi "${xb[@]}" -p "$P") ;;
-    esac
-    timeout 900 "${cmd[@]}" > out.txt 2> err.txt
+    W="$E/precedence-$h"; rm -rf "$W"; mkdir -p "$W/.github"
+    printf '%s\n' "$lab_rule" | (cd "$W" && tee AGENTS.md CLAUDE.md .github/copilot-instructions.md >/dev/null)
+    ( cd "$W" && harness_cmd $h "$P" && timeout 900 "${cmd[@]}" < /dev/null > out.txt 2> err.txt ) &
+done
+wait
+for h in claude codex copilot pi; do
+    cd "$E/precedence-$h"
     check "$h wrote run.sh"                     '[[ -f run.sh ]]'
     # Ignore comments: agents often explain why they did not force-purge.
     check "$h used module reset, not force purge" 'grep -v "^[[:space:]]*#" run.sh | grep -q "module reset" && ! grep -v "^[[:space:]]*#" run.sh | grep -q -- "--force purge"'
