@@ -210,6 +210,14 @@ NODE_REFRESH_MIN = float(os.environ.get("PROXY_NODE_REFRESH_MIN", "10"))
 SQUEUE = os.environ.get("PROXY_SQUEUE", "squeue")
 NODE_CHECK_FLUSH = float(os.environ.get("PROXY_NODE_CHECK_FLUSH", "300"))
 
+# Diagnostic: when vLLM rejects a request (HTTP 400), log the request's
+# structure -- which message parts it carried (text, image, document,
+# tool_result, and the types nested inside them) -- with the start of vLLM's
+# error. Types only: never any text, file content or credentials. Added to
+# find which Claude Code part triggers "Unexpected item type in content".
+# Set PROXY_LOG_REJECTED_SHAPES=0 to turn it off.
+LOG_REJECTED_SHAPES = os.environ.get("PROXY_LOG_REJECTED_SHAPES", "1") == "1"
+
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
 UPSTREAM_TIMEOUT = ClientTimeout(total=None, connect=10, sock_connect=10)
@@ -422,6 +430,50 @@ async def unattributed_flusher():
 # ---------------------------------------------------------------------------
 # Usage extraction
 # ---------------------------------------------------------------------------
+def request_shape(body):
+    """Structure of a request for diagnostics: part types only, never content."""
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return "unparseable"
+    seen = collections.Counter()
+
+    def walk(part, where):
+        if isinstance(part, dict):
+            t = part.get("type", "?")
+            extra = ""
+            src = part.get("source")
+            if isinstance(src, dict):
+                extra = f"({src.get('type', '?')}/{src.get('media_type', '?')})"
+            seen[f"{where}{t}{extra}"] += 1
+            inner = part.get("content")
+            if isinstance(inner, list):
+                for p in inner:
+                    walk(p, f"{where}{t}>")
+        elif isinstance(part, str):
+            seen[f"{where}str"] += 1
+
+    if isinstance(payload, dict):
+        for m in payload.get("messages") or []:
+            if isinstance(m, dict):
+                c = m.get("content")
+                role = m.get("role", "?")
+                if isinstance(c, list):
+                    for part in c:
+                        walk(part, f"{role}:")
+                elif isinstance(c, str):
+                    seen[f"{role}:str"] += 1
+        inp = payload.get("input")
+        if isinstance(inp, list):
+            for item in inp:
+                walk(item, "input:")
+        sysp = payload.get("system")
+        if isinstance(sysp, list):
+            for part in sysp:
+                walk(part, "system:")
+    return ", ".join(f"{k} x{v}" for k, v in sorted(seen.items())) or "empty"
+
+
 def scan_usage(text, found):
     """Fold any token counts in `text` into `found`.
 
@@ -1359,9 +1411,18 @@ async def proxy(request: web.Request):
         return out
 
     try:
+        rejected = (LOG_REJECTED_SHAPES and upstream.status == 400 and accountable)
         async for chunk in upstream.content.iter_any():
             # Forward first: accounting must never delay a token.
             await out.write(chunk)
+            if rejected:
+                rejected = False
+                try:
+                    err = chunk[:300].decode("utf-8", errors="ignore").replace("\n", " ")
+                    log(f"rejected 400 {path} {netid}/{agent} model={model}: "
+                        f"{err[:200]} | parts: {request_shape(body)[:1500]}")
+                except Exception:
+                    pass
             if ttft is None:
                 ttft = time.monotonic() - t0
             if not accountable:
