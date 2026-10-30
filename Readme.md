@@ -188,7 +188,7 @@ YCRC's skills are maintained centrally in github.com/ycrc/yale-ycrc-skills, shar
 
 Sessions read the **live** shared checkout, `/apps/services/yale-ycrc-skills/build/bouchet/skills`, so a skill change reaches users at their next session once it is pulled there, with no module release or image rebuild. If that directory has no skills, the launcher falls back to the copy bundled with the module (`etc/agents/skills`, refreshed with `eb/sync-skills.sh <repo>`; `etc/agents/SKILLS-SOURCE` records the commit). `YCRC_SKILLS_DIR` overrides both, for testing. Open WebUI provisions from the same live directory.
 
-No skills are baked into the images. The launcher exposes the managed skills without taking over a user's own harness configuration:
+No skills are baked into the images; the launcher binds the directory in use, read-only, at `/etc/agents/skills` in every session (so `bouchet-easybuild-admin` can name its scripts by a fixed path). It also exposes the managed skills without taking over a user's own harness configuration:
 
 - Claude, Codex and Pi: `~/.claude-ycrc/skills`, `~/.codex-ycrc/skills` and `~/.pi-ycrc/skills` are real writable user directories; each managed skill is a symlink into the live checkout (or the module), and users' own skills sit alongside. Managed links that are no longer current (a renamed or removed skill, another release's copy) are removed at launch; users' own skills and links are never touched. A real user directory with a managed skill's name stops the launch.
 - Copilot: `COPILOT_SKILLS_DIRS` names the same directory; users' own skills stay in `~/.copilot-ycrc/skills`.

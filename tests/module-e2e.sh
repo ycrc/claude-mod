@@ -128,7 +128,7 @@ printf -- '---\nname: ycrc-e2e-probe\ndescription: Use when asked for the YCRC e
 mkdir -p "$HOME/.claude-ycrc/skills"
 ln -sfn /apps/software/system/software/claude-local/0.0/share/agents/skills/bouchet-stale "$HOME/.claude-ycrc/skills/bouchet-stale"
 cd "$W"
-P="Use your skills to find the YCRC end-to-end probe word, then run this exact shell command: sha256sum /etc/agents/AGENTS.md > sum.txt . Reply with the probe word only."
+P="Use your skills to find the YCRC end-to-end probe word, then run this exact shell command: { sha256sum /etc/agents/AGENTS.md; ls /etc/agents/skills; } > sum.txt . Reply with the probe word only."
 for h in claude codex copilot pi; do
     case $h in
         claude)  cmd=(claude "${xb[@]}" -p "$P" --dangerously-skip-permissions) ;;
@@ -139,7 +139,8 @@ for h in claude codex copilot pi; do
     rm -f sum.txt
     YCRC_SKILLS_DIR="$S" timeout 600 "${cmd[@]}" > "out-$h.txt" 2> "err-$h.txt"
     check "$h found the probe skill"          'grep -q "$word" "out-$h.txt"'
-    check "$h sees this module's AGENTS.md"   '[[ "$(cut -d" " -f1 sum.txt 2>/dev/null)" == "$(sha256sum < "$T/software/$h-local/$V/share/agents/AGENTS.md" | cut -d" " -f1)" ]]'
+    check "$h sees this module's AGENTS.md"   '[[ "$(head -1 sum.txt 2>/dev/null | cut -d" " -f1)" == "$(sha256sum < "$T/software/$h-local/$V/share/agents/AGENTS.md" | cut -d" " -f1)" ]]'
+    check "$h sees the skills at /etc/agents/skills" 'grep -qx ycrc-e2e-probe sum.txt'
 done
 check "stale managed skill link removed"      '[[ ! -L "$HOME/.claude-ycrc/skills/bouchet-stale" ]]'
 check "codex skills linked into CODEX_HOME"   '[[ -L "$HOME/.codex-ycrc/skills/ycrc-e2e-probe" ]]'

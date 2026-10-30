@@ -1472,6 +1472,10 @@ bind_opts+=("${user_bind_opts[@]}")
 # The image's /etc/agents/AGENTS.md (Claude's managed CLAUDE.md links to it)
 # is replaced by this module's policy, so a policy change needs no new image.
 bind_opts+=(--bind "${site_agents_dir}/AGENTS.md:/etc/agents/AGENTS.md:ro")
+# The managed skills also appear at the fixed path /etc/agents/skills, so a
+# skill can name its own scripts (bouchet-easybuild-admin) whichever tree,
+# live or bundled, is in use.
+bind_opts+=(--bind "${site_skills_dir}:/etc/agents/skills:ro")
 
 # Remove host-controlled Apptainer mechanisms that can add mounts or inject
 # container environment variables. In particular, APPTAINER_BIND/BINDPATH/MOUNT
