@@ -1565,7 +1565,17 @@ case "$agent" in
             # limit: shorter contexts answer faster, and a turn that pulls in
             # a large file still has room before the hard cap above.
             --env "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=${YCRC_CLAUDE_AUTOCOMPACT_PCT:-85}"
+            # Send every tool up front. With tool search on, Claude Code defers
+            # tools and loads them with "tool_reference" parts, which vLLM's
+            # chat template rejects ("Unexpected item type in content", 21
+            # failed turns by 2026-11-02).
+            --env "ENABLE_TOOL_SEARCH=false"
         )
+        # WebSearch uses Anthropic's server-side search tool, which only exists
+        # on Anthropic's API; against the local model every call fails (vLLM:
+        # "tools.0.input_schema Field required"). Without it the model uses
+        # WebFetch or the shell instead, as in claude-mod's in-house mode.
+        client_args+=("--disallowedTools=WebSearch")
         # Claude's file tools only work in its working directory and the
         # directories it is given. The = form keeps --add-dir, which takes
         # several values, from consuming the user's prompt.
