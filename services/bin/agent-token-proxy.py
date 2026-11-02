@@ -558,6 +558,38 @@ def normalise_effort(payload):
     return changed, seen
 
 
+def rewrite_tool_references(payload):
+    """Replace Claude Code "tool_reference" parts with text; return the count.
+
+    With tool search on, Claude Code defers tools and loads them by returning
+    {"type": "tool_reference", "tool_name"|"name": ...} parts inside tool
+    results. vLLM's chat template rejects the unknown part type ("Unexpected
+    item type in content", 21 failures by 2026-11-02), failing the turn. The
+    part only tells the model a tool is now available; the tool's definition
+    is already in the request's tools list, so a sentence carries the same
+    meaning. The module turns tool search off from its next release; this
+    covers older sessions and other Claude Code clients.
+    """
+    n = 0
+
+    def fix(parts):
+        nonlocal n
+        for i, part in enumerate(parts):
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "tool_reference":
+                name = part.get("tool_name") or part.get("name") or "the requested tool"
+                parts[i] = {"type": "text", "text": f"Tool loaded: {name}"}
+                n += 1
+            elif isinstance(part.get("content"), list):
+                fix(part["content"])
+
+    for m in payload.get("messages") or []:
+        if isinstance(m, dict) and isinstance(m.get("content"), list):
+            fix(m["content"])
+    return n
+
+
 def rewrite_request(path, body):
     """Apply request rewrites; return (body, model-to-account-under).
 
@@ -611,6 +643,13 @@ def rewrite_request(path, body):
         payload["model"] = _served_model
         changed = True
         account_as = _served_model + (THINK_SUFFIX if think_requested else "")
+
+    if path.startswith("/v1/messages"):
+        try:
+            if rewrite_tool_references(payload):
+                changed = True
+        except Exception:
+            pass
 
     eff_changed, effort_seen = normalise_effort(payload)
     changed = changed or eff_changed
