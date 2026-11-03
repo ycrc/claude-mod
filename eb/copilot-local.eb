@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'copilot-local'
-version = '1.9'
+version = '1.10'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -32,7 +32,7 @@ checksums = [
     {'coding-agents-exclude.conf': '3275d0d06d91a99107074f817daf60e176251a63bf64583d434ccefd6e049edb'},
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
-    {'coding-agents-site.tar.gz': 'd1a17f71a619e99afb8e8802b2708a8d6d969e1d9171b11513730a561d4e5202'},
+    {'coding-agents-site.tar.gz': 'e6671a464fca854a4ea3c67adea180cfe66106404dfb903c5082c69051a2431b'},
 ]
 
 postinstallcmds = [
