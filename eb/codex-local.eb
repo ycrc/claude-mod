@@ -1,7 +1,7 @@
 easyblock = 'Binary'
 
 name = 'codex-local'
-version = '1.8'
+version = '1.9'
 # Loaded through local-coding-agents; not listed in `module avail`.
 hidden = True
 
@@ -34,7 +34,7 @@ checksums = [
     {'coding-agents-env.conf': '1eaa1d157f7b3166741f9d0e0631f2f33b3f2d319d48c584d470d8a4dff25f21'},
     {'coding-agents-provider.conf': '6dee8faed2d048f6a7a9d4061dc7c80c7758730178d750e3a500e61b1ff19c8b'},
     {'codex-config.toml': 'e00126892cf263ee4e6107d96d2ba5638e4980a2b15170912b0d9d0850137b9a'},
-    {'coding-agents-site.tar.gz': 'b76dac00ba51d421426a1fa2bb569bf4cd78d4b96eb26f37e19a05f1d041e241'},
+    {'coding-agents-site.tar.gz': 'd1a17f71a619e99afb8e8802b2708a8d6d969e1d9171b11513730a561d4e5202'},
 ]
 
 postinstallcmds = [
