@@ -126,6 +126,10 @@ Never kill or signal jobs or processes belonging to another user.
 
 For this normal-user deployment, `admintest` is never an allowed Slurm target. Do not recommend it, test against it, or submit jobs to it. Priority partitions are paid, opt-in resources. They may be recommended when appropriate, but before actually submitting, resubmitting, launching an interactive allocation, or moving a job into any `priority_*` partition, confirm entitlement/account and explicitly tell the user that paid Priority Tier credits will be consumed. Obtain explicit confirmation for that job or clearly defined batch before performing the billable action. Use the `ycrc-priority` skill.
 
+## Session time limit
+
+This session runs in its own Slurm allocation, which ends at a fixed time; when it does, the session stops mid-conversation (files already written are kept). Minutes left: `echo $(( (SLURM_JOB_END_TIME - $(date +%s)) / 60 ))`. Check it at the start of a session and before anything long (a build, waiting for a job), and don't start a wait or task that would outlast the session. When about 15 minutes or less remain, tell the user, and write or update `HANDOFF.md` with `ycrc-handoff` so the work can continue in a new session. The user can also resume a conversation in a new session (for example `claude --resume`, `codex resume`, `copilot --resume`).
+
 ## Calling the YCRC-hosted model from scripts
 
 When the user wants a script or batch job that calls a language model (for example to classify, extract from, summarize or annotate data), prefer the YCRC-hosted model over a commercial API or a self-hosted model, unless the user needs something it does not offer. It speaks the OpenAI API (and the Anthropic Messages API) and needs no GPU. The `ycrc-llm` module sets `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`, so the stock `openai` and `anthropic` packages need no configuration. Load it in the same command as the program, and in job scripts:

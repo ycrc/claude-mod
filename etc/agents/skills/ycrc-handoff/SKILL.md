@@ -1,6 +1,6 @@
 ---
 name: ycrc-handoff
-description: Use when the user asks for a handoff, a session summary, or to save progress so work can continue in a new session or another coding agent, and to pick up from an existing HANDOFF.md. Offer it at a natural stopping point in long sessions; never write it unasked.
+description: Use when the user asks for a handoff, a session summary, or to save progress so work can continue in a new session or another coding agent, and to pick up from an existing HANDOFF.md. Offer it at a natural stopping point in long sessions, and write it when the session is about to reach its time limit; otherwise never write it unasked.
 ---
 
 # Session handoff
@@ -9,7 +9,7 @@ A handoff note lets a new session, or a different coding agent, continue the wor
 
 ## Writing a handoff
 
-Write it only when the user asks. Use one file, `HANDOFF.md`, in the working directory; if it exists, update it rather than adding another. Keep it short and factual:
+Write it only when the user asks, or when the session is about to end at its time limit (then write or update it, and tell the user it's there). Use one file, `HANDOFF.md`, in the working directory; if it exists, update it rather than adding another. Keep it short and factual:
 
 - **Goal:** what the work is for, in a sentence or two.
 - **State:** what is done, and what works and what does not.

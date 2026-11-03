@@ -35,6 +35,11 @@ description: Use for Slurm jobs, sbatch/srun/salloc, resource requests, partitio
 - Do not assume paths visible only inside the interactive container will exist in a submitted job.
 - `admintest` is reserved for administrative testing and is never an allowed target for this normal-user coding-agent deployment. Do not recommend `admintest`, and do not submit or test jobs against it.
 
+## Waiting for jobs, and how long they take
+
+- You only see a job finish while you are working on a reply; once you hand back to the user, nothing tells you it ended. Never say you are "watching" a job or will "let the user know" unless you wait in this reply: `sbatch --wait <script>` for a job you submit, or poll one already running, for example `while squeue -h -j <jobid> | grep -q .; do sleep 60; done; sacct -j <jobid> -o JobID,State,Elapsed,ExitCode`, kept within your shell tool's time limit. If the job will run longer than you can wait, say so, give the user the command to check it (`squeue -u $USER`, `sacct -j <jobid>`), and ask them to tell you when it's done.
+- Estimate how long a job will take from how long the user's similar jobs actually took, not from general expectations: `sacct -u $USER -S now-14days -X -o JobID,JobName%30,Elapsed,State` (or `seff <jobid>` for one job). Say what the estimate is based on, and set `--time` from it with some headroom.
+
 ## Route specialized Slurm questions to the focused skills
 
 - For general tasks vs. CPUs, threading, multiprocessing, GNU Parallel, or CPU layout, use `ycrc-parallel`.
