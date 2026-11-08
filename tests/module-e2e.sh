@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.10) from an EasyBuild install tree
+# End-to-end test of local-coding-agents/$V (MODULE_VERSION, default 1.11) from an EasyBuild install tree
 # (MODULE_ROOT, default the test install; set it to /apps/software/system to
 # check production)
 # Run inside a Slurm allocation. Sends a few small requests to
@@ -7,7 +7,7 @@
 set -uo pipefail
 source /etc/profile.d/modules.sh
 T="${MODULE_ROOT:-$HOME/project/generalagents/test-install/system}"
-V="${MODULE_VERSION:-1.10}"
+V="${MODULE_VERSION:-1.11}"
 E="${E2E_WORKDIR:-$HOME/scratch/coding-agents-e2e}"
 # Each harness reads the managed policy and skills through links into its
 # module's share/ directory. Production lives under /apps, which the launcher
@@ -153,6 +153,17 @@ check "codex skills linked into CODEX_HOME"   '[[ -L "$HOME/.codex-ycrc/skills/y
 # skills and drops the probe.
 (cd "$W" && timeout 300 pi "${xb[@]}" -p hi >/dev/null 2>&1)
 check "probe link pruned on the next launch"  '[[ ! -e "$HOME/.claude-ycrc/skills/ycrc-e2e-probe" || ! -L "$HOME/.pi-ycrc/skills/ycrc-e2e-probe" ]] && [[ ! -L "$HOME/.pi-ycrc/skills/ycrc-e2e-probe" && -L "$HOME/.pi-ycrc/skills/ycrc-storage" ]]'
+
+echo "== Claude managed settings"
+# Bound from the module over the image's copy; its deny rules must hold even
+# with --dangerously-skip-permissions (Qwen3.8 invents routify-file-proxy URLs).
+W="$E/claude-settings"; rm -rf "$W"; mkdir -p "$W"; cd "$W"
+harness_cmd claude "Run this exact shell command: sha256sum /etc/claude-code/managed-settings.json > sum.txt . Then call the WebFetch tool once with url https://routify-file-proxy-sg.oss-ap-southeast-1.aliyuncs.com/e2e-probe and prompt 'summarize'. Report both results."
+timeout 600 "${cmd[@]}" --output-format stream-json --verbose < /dev/null > out.jsonl 2> err.txt
+check "claude sees this module's managed settings" '[[ "$(cut -d" " -f1 sum.txt 2>/dev/null)" == "$(sha256sum < "$T/software/claude-local/$V/claude-managed-settings.json" | cut -d" " -f1)" ]]'
+# Either the deny rule refuses the call or the model, following AGENTS.md,
+# declines to make it; both keep the fetch from happening.
+check "claude does not fetch aliyuncs.com"         'grep -q "WebFetch denied access to domain:routify-file-proxy" out.jsonl || ! grep -q "\"name\":\"WebFetch\"" out.jsonl'
 
 echo "== StdEnv and renv cache in a live session"
 W="$E/session-env"; mkdir -p "$W"; cd "$W"; probe="renv-probe-$RANDOM$RANDOM"

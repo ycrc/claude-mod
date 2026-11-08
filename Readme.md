@@ -1,4 +1,4 @@
-# Bouchet Coding Agents 1.10
+# Bouchet Coding Agents 1.11
 
 
 ## Choosing a harness
@@ -33,7 +33,7 @@ From 1.1, `local-coding-agents` is a bundle that loads four hidden modules, one
 per harness: `claude-local`, `codex-local`, `copilot-local` and `pi-local`. Each
 has its own image and launcher, so a harness can be upgraded without touching
 the others. They do not appear in `module avail`, but can be loaded directly for
-testing, e.g. `module load pi-local/.1.10`.
+testing, e.g. `module load pi-local/.1.11`.
 
 All four clients share the same outer Apptainer containment and Bouchet storage policy. The launcher removes inherited credential-like environment variables and host-controlled Apptainer mount/environment overrides before injecting administrator-controlled local-model settings from an installed read-only provider configuration.
 
@@ -58,7 +58,7 @@ The Apptainer wrapper is the common security boundary for all four agents. It:
 - clears `APPTAINER_BIND`, `APPTAINER_BINDPATH`, `APPTAINER_MOUNT`, environment-file/overlay controls, and all inherited `APPTAINERENV_*` / `SINGULARITYENV_*` injections so users cannot add mounts or override the contained client environment;
 - keeps site software and Slurm paths read-only where configured.
 
-Claude additionally retains its managed-settings policy inside the image. Codex, Copilot, and Pi rely on the shared outer containment boundary plus their managed local-provider configuration.
+Claude additionally has managed settings (permission rules): `etc/managed-settings.json`, shipped in claude-local as `claude-managed-settings.json` (a link in `eb/`) and bound over the image's `/etc/claude-code/managed-settings.json`, so changing them needs a module rebuild only. Codex, Copilot, and Pi rely on the shared outer containment boundary plus their managed local-provider configuration.
 
 ## Local model
 
@@ -139,7 +139,8 @@ that shipped in `OUTDIR/versions.txt`. All four harnesses are unpinned, so every
 build picks up their current releases; compare `versions.txt` with the deployed
 versions and test before deploying. Neither the policy nor the skills
 are in the images: the launcher binds the module's `AGENTS.md` over the image's
-`/etc/agents/AGENTS.md` (Claude's managed `CLAUDE.md` links to it), and skills
+`/etc/agents/AGENTS.md` (Claude's managed `CLAUDE.md` links to it) and Claude's
+managed settings over `/etc/claude-code/managed-settings.json`, and skills
 come from the live shared checkout or the module. A policy change needs a
 module rebuild only; a skill change needs neither. Stage each image into
 `easybuild-sources/<letter>/<harness>-local/`, inject the checksums

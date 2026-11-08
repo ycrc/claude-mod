@@ -9,6 +9,8 @@ env_config="${launcher_dir}/coding-agents-env.conf"
 provider_config="${launcher_dir}/coding-agents-provider.conf"
 codex_config="${launcher_dir}/codex-config.toml"
 pi_models_config="${launcher_dir}/pi-models.json"
+# Only claude-local ships this (a copy of etc/managed-settings.json).
+claude_managed_settings="${launcher_dir}/claude-managed-settings.json"
 site_agents_dir="${launcher_dir}/share/agents"
 bundled_skills_dir="${site_agents_dir}/skills"
 # YCRC's skills are maintained centrally (github.com/ycrc/yale-ycrc-skills) and
@@ -322,6 +324,10 @@ mkdir -p -- \
 # the shared policy and skills. Because /apps is bound read-only into the
 # container, these paths resolve both from a normal shell and from a harness.
 [[ -r "${site_agents_dir}/AGENTS.md" ]] || { echo "Error: missing site policy: ${site_agents_dir}/AGENTS.md" >&2; exit 1; }
+if [[ "$agent" == claude && ! -r "$claude_managed_settings" ]]; then
+    echo "Error: missing Claude managed settings: $claude_managed_settings" >&2
+    exit 1
+fi
 if [[ -n "${YCRC_SKILLS_DIR:-}" ]]; then
     site_skills_dir="$YCRC_SKILLS_DIR"
 elif compgen -G "${live_skills_dir}/*/SKILL.md" >/dev/null; then
@@ -1472,6 +1478,11 @@ bind_opts+=("${user_bind_opts[@]}")
 # The image's /etc/agents/AGENTS.md (Claude's managed CLAUDE.md links to it)
 # is replaced by this module's policy, so a policy change needs no new image.
 bind_opts+=(--bind "${site_agents_dir}/AGENTS.md:/etc/agents/AGENTS.md:ro")
+# Likewise Claude's managed settings (permission rules) come from this module,
+# not the copy built into the image.
+if [[ "$agent" == claude ]]; then
+    bind_opts+=(--bind "${claude_managed_settings}:/etc/claude-code/managed-settings.json:ro")
+fi
 # The managed skills also appear at the fixed path /etc/agents/skills, so a
 # skill can name its own scripts (ycrc-easybuild-admin) whichever tree,
 # live or bundled, is in use.
