@@ -118,7 +118,11 @@
       "Bash(telnet:*)",
       "Bash(ftp:*)",
       "Bash(sacctmgr:*)",
-      "Bash(scrontab:*)"
+      "Bash(scrontab:*)",
+      "WebFetch(domain:aliyuncs.com)",
+      "WebFetch(domain:*.aliyuncs.com)",
+      "Bash(curl *aliyuncs.com*)",
+      "Bash(wget *aliyuncs.com*)"
     ]
   },
   "env": {
