@@ -50,7 +50,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from aiohttp import ClientSession, ClientTimeout, web
+from aiohttp import ClientSession, ClientTimeout, ServerDisconnectedError, TCPConnector, web
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -221,6 +221,20 @@ LOG_REJECTED_SHAPES = os.environ.get("PROXY_LOG_REJECTED_SHAPES", "1") == "1"
 # No total timeout: generations legitimately run for many minutes. Guard only
 # connection establishment, so a dead upstream fails fast instead of hanging.
 UPSTREAM_TIMEOUT = ClientTimeout(total=None, connect=10, sock_connect=10)
+
+# Seconds an idle upstream connection is kept for reuse. vLLM's server closes
+# idle keep-alive connections after 5 s (VLLM_HTTP_TIMEOUT_KEEP_ALIVE); reusing
+# one just as it closes fails that request with ServerDisconnectedError (7 times
+# 2026-11-03..10, always on a nearly idle server). Expire ours first.
+UPSTREAM_KEEPALIVE = float(os.environ.get("PROXY_UPSTREAM_KEEPALIVE", "2"))
+
+# Claude Code sends some calls under its own default model name (for example
+# claude-sonnet-5, once per session) even with ANTHROPIC_MODEL and
+# ANTHROPIC_SMALL_FAST_MODEL set, and users can pick other claude-* names with
+# /model; vLLM answers 404. For the claude agent only, those names are served
+# by the alias target. Set empty to disable.
+CLAUDE_MODEL_PREFIX = os.environ.get("PROXY_CLAUDE_MODEL_PREFIX", "claude-")
+CLAUDE_MODEL_AGENTS = frozenset(("claude",))
 
 # Hop-by-hop headers must not be forwarded in either direction.
 HOP_BY_HOP = frozenset((
@@ -595,7 +609,7 @@ def rewrite_tool_references(payload):
     return n
 
 
-def rewrite_request(path, body):
+def rewrite_request(path, body, agent=None):
     """Apply request rewrites; return (body, model-to-account-under).
 
     Two rewrites happen here:
@@ -614,7 +628,8 @@ def rewrite_request(path, body):
     into normal usage.
 
     The model alias (MODEL_ALIAS, after the thinking suffix is removed) is
-    replaced by the served model, and accounted under the real name.
+    replaced by the served model, and accounted under the real name. For the
+    claude agent, claude-* model names are treated as the alias too.
 
     Anything unparseable is passed through untouched -- this sits in the
     inference path and must never reject a request it merely failed to read.
@@ -644,6 +659,10 @@ def rewrite_request(path, body):
     else:
         think_requested = False
 
+    if (MODEL_ALIAS and CLAUDE_MODEL_PREFIX and agent in CLAUDE_MODEL_AGENTS
+            and isinstance(payload.get("model"), str)
+            and payload["model"].startswith(CLAUDE_MODEL_PREFIX)):
+        payload["model"] = MODEL_ALIAS
     if MODEL_ALIAS and _served_model and payload.get("model") == MODEL_ALIAS:
         payload["model"] = _served_model
         changed = True
@@ -1390,17 +1409,27 @@ async def proxy(request: web.Request):
         body = await request.read()
         if MODEL_ALIAS and _served_model is None:
             await refresh_served_model()
-        body, model = rewrite_request(path, body)
+        body, model = rewrite_request(path, body, agent)
     elif request.method not in ("GET", "HEAD", "OPTIONS"):
         body = await request.read()
 
     hdrs = forward_headers(request.headers, netid, agent)
 
     try:
-        upstream = await _session.request(
-            request.method, url, data=body if body else None,
-            headers=hdrs, timeout=UPSTREAM_TIMEOUT, allow_redirects=False,
-        )
+        try:
+            upstream = await _session.request(
+                request.method, url, data=body if body else None,
+                headers=hdrs, timeout=UPSTREAM_TIMEOUT, allow_redirects=False,
+            )
+        except ServerDisconnectedError:
+            # A reused idle connection closed under us before vLLM answered
+            # (see UPSTREAM_KEEPALIVE); nothing was processed, so retry once
+            # on a fresh connection.
+            log(f"upstream disconnected before answering {request.method} {path}; retrying once")
+            upstream = await _session.request(
+                request.method, url, data=body if body else None,
+                headers=hdrs, timeout=UPSTREAM_TIMEOUT, allow_redirects=False,
+            )
     except Exception as exc:
         log(f"upstream error for {request.method} {path}: {exc!r}")
         # vLLM is down, perhaps restarting with a different model: re-learn
@@ -1510,7 +1539,9 @@ async def proxy(request: web.Request):
 
 async def on_startup(app):
     global _session
-    _session = ClientSession(auto_decompress=False)
+    _session = ClientSession(
+        auto_decompress=False,
+        connector=TCPConnector(keepalive_timeout=UPSTREAM_KEEPALIVE))
     log(f"proxying {LISTEN_HOST}:{LISTEN_PORT} -> {UPSTREAM}")
     log(f"usage records -> {COLLECTOR_URL}")
     if UNATTRIBUTED_LOG:
@@ -1526,6 +1557,9 @@ async def on_startup(app):
         + (f" -> {NODE_CHECK_LOG}" if NODE_CHECK in ("flag", "enforce") else ""))
     if NODE_CHECK in ("flag", "enforce"):
         app["node_flag_flusher"] = asyncio.create_task(node_flag_flusher())
+    log(f"upstream keep-alive {UPSTREAM_KEEPALIVE:g}s, one retry on early disconnect")
+    if MODEL_ALIAS and CLAUDE_MODEL_PREFIX:
+        log(f"{CLAUDE_MODEL_PREFIX}* models from {sorted(CLAUDE_MODEL_AGENTS)} -> {MODEL_ALIAS!r}")
     if MODEL_ALIAS:
         app["served_model_watcher"] = asyncio.create_task(served_model_watcher())
     if USER_MAX_INFLIGHT > 0:
