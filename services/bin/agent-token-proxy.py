@@ -273,6 +273,15 @@ VALID_AGENTS = frozenset(("claude", "codex", "copilot", "pi", "claude-mod", "ope
 API_AGENT = "api"
 API_ACCESS = os.environ.get("PROXY_API_ACCESS", "0") == "1"
 API_SHARE = min(max(float(os.environ.get("PROXY_API_SHARE", "0.75")), 0.0), 1.0)
+# vLLM priority for script requests (higher = later; interactive traffic is 0),
+# so a batch job cannot delay people typing (one did for 6 minutes on
+# 2026-11-08). 0 = off. Needs vLLM started with --scheduling-policy priority:
+# without it vLLM rejects any non-zero priority, so leave this 0 until then.
+# When on, every other request is forced to priority 0, so no client can jump
+# the queue by sending its own. vLLM's Anthropic /v1/messages endpoint has no
+# priority field; scripts using it keep normal priority.
+API_PRIORITY = int(os.environ.get("PROXY_API_PRIORITY", "0"))
+PRIORITY_PATHS = ("/v1/chat/completions", "/v1/completions", "/v1/responses")
 if API_ACCESS:
     VALID_AGENTS = VALID_AGENTS | {API_AGENT}
 # Optional link to user documentation for scripted access, added to refusals.
@@ -674,6 +683,12 @@ def rewrite_request(path, body, agent=None):
                 changed = True
         except Exception:
             pass
+
+    if API_PRIORITY and path.startswith(PRIORITY_PATHS):
+        want = API_PRIORITY if agent == API_AGENT else 0
+        if payload.get("priority", 0) != want:
+            payload["priority"] = want
+            changed = True
 
     eff_changed, effort_seen = normalise_effort(payload)
     changed = changed or eff_changed
@@ -1558,6 +1573,8 @@ async def on_startup(app):
     if NODE_CHECK in ("flag", "enforce"):
         app["node_flag_flusher"] = asyncio.create_task(node_flag_flusher())
     log(f"upstream keep-alive {UPSTREAM_KEEPALIVE:g}s, one retry on early disconnect")
+    log(f"script priority: {API_PRIORITY} (others 0)" if API_PRIORITY
+        else "script priority: off (vLLM needs --scheduling-policy priority first)")
     if MODEL_ALIAS and CLAUDE_MODEL_PREFIX:
         log(f"{CLAUDE_MODEL_PREFIX}* models from {sorted(CLAUDE_MODEL_AGENTS)} -> {MODEL_ALIAS!r}")
     if MODEL_ALIAS:
