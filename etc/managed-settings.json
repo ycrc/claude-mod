@@ -28,7 +28,6 @@
       "Bash(squeue:*)",
       "Bash(sacct:*)",
       "Bash(sinfo:*)",
-      "Bash(rm:*)",
       "Bash(mv:*)",
       "Bash(find * -delete)",
       "Bash(find * -exec rm *)",
