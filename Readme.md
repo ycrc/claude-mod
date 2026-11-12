@@ -69,7 +69,8 @@ Swapping the served model therefore still needs no module rebuild: the next laun
 - Claude: Anthropic-compatible endpoint.
 - Codex: OpenAI Responses API via the read-only `codex-config.toml` source.
 - Copilot: OpenAI-compatible local provider with `COPILOT_OFFLINE=true` to suppress Copilot's own automatic external-provider/startup activity; this does not disable Bouchet network access.
-- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model <served model>`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access.
+  The wrapper describes the gateway and both models (plain and `-think`) in a providers file, `~/.cache/ycrc-launcher/copilot-providers.json`, mounted read-only at `/etc/agents/copilot-providers.json` (`COPILOT_PROVIDERS_CONFIG`) and replaced atomically at each launch. Copilot takes a custom model's capabilities from its catalog of known model names, so with the `COPILOT_PROVIDER_*` variables it treats our model as text-only and drops images; the file declares vision support. If it cannot be written, the wrapper falls back to those variables, without image input.
+- Pi: managed `openai-completions` Bouchet provider, launched explicitly with `--provider bouchet --model <served model>`; Pi automatic startup/version-check activity and telemetry are disabled; this does not disable Bouchet network access. `pi-models.json` declares text and image input; without it Pi drops images.
 
 The installed `coding-agents-provider.conf` owns the cluster, shared model/auth values, and Claude/Copilot endpoint values; the wrapper sources it after scrubbing inherited credentials. Codex's base URL remains in the administrator-owned `codex-config.toml`, while Pi's base URL remains in the administrator-owned `pi-models.json`; update those files together if the inference endpoint changes.
 

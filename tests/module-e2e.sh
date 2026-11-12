@@ -86,6 +86,8 @@ echo "   served model: $served"
 check "codex config names the served model"  'grep -qx "model = \"$served\"" "$HOME/.codex-ycrc/config.toml"'
 check "pi model list includes the served model" 'grep -q "\"id\": \"$served\"" "$HOME/.cache/ycrc-launcher/pi-models.json"'
 check "pi session used the served model"       'grep -q "\"modelId\":\"$served\"" "$(ls -t "$HOME"/.pi-ycrc/sessions/*/*.jsonl | head -1)"'
+check "copilot providers file lists the served model with vision" 'python3 -c "import json,sys; c=json.load(open(sys.argv[1])); sys.exit(not any(m[\"id\"]==sys.argv[2] and m[\"capabilities\"][\"supports\"][\"vision\"] for m in c[\"models\"]))" "$HOME/.cache/ycrc-launcher/copilot-providers.json" "$served"'
+check "copilot session used the served model"  'grep -q "\"selectedModel\": *\"[^\"]*$served\"" "$(ls -t "$HOME"/.copilot-ycrc/session-state/*/events.jsonl | head -1)"'
 
 echo "== extended reasoning through the alias"
 W="$E/think"; mkdir -p "$W"; cd "$W"

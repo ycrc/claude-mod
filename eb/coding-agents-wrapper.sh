@@ -1684,16 +1684,70 @@ PY
         client_env_opts+=(
             --env "COPILOT_HOME=${copilot_home}"
             --env "COPILOT_CACHE_HOME=${copilot_cache_home}"
-            --env "COPILOT_PROVIDER_TYPE=openai"
-            --env "COPILOT_PROVIDER_BASE_URL=${YCRC_COPILOT_BASE_URL}"
-            --env "COPILOT_PROVIDER_API_KEY=${agent_auth}"
-            --env "COPILOT_MODEL=${agent_model}"
-            --env "COPILOT_PROVIDER_MAX_PROMPT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
-            --env "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
             --env "COPILOT_SKILLS_DIRS=${site_skills_dir}"
             --env "COPILOT_ALLOW_ALL=true"
             --env "COPILOT_OFFLINE=true"
         )
+        # Copilot takes a custom model's capabilities from its catalog of
+        # known model names, which does not include ours, so with the
+        # COPILOT_PROVIDER_* variables it treats the model as text-only and
+        # drops images (such as a PNG its view tool reads) from requests. A
+        # providers file can declare vision support, so describe the gateway
+        # and both models (plain and reasoning) there. Its content is the same
+        # for every session of a user, so parallel launches write identical
+        # files; it is replaced atomically and mounted read-only, which leaves
+        # running sessions on the version they started with. If it cannot be
+        # written, fall back to the variables (no image input).
+        launcher_cache_dir="${host_home}/.cache/ycrc-launcher"
+        copilot_providers_copy="${launcher_cache_dir}/copilot-providers.json"
+        copilot_providers_tmp=""
+        copilot_providers_ok=false
+        if mkdir -p -m 0700 -- "$launcher_cache_dir" &&
+           copilot_providers_tmp="$(mktemp "${launcher_cache_dir}/copilot-providers.XXXXXX")" &&
+           python3 -I - "$copilot_providers_tmp" "$YCRC_COPILOT_BASE_URL" "$agent_auth" \
+               "$base_model" "${YCRC_AGENT_THINK_SUFFIX:-}" \
+               "$YCRC_AGENT_MAX_PROMPT" "$YCRC_AGENT_MAX_OUTPUT" <<'PY'
+import json, sys
+target, base_url, api_key, model, suffix, max_prompt, max_output = sys.argv[1:]
+models = [model] + ([model + suffix] if suffix else [])
+config = {
+    "providers": [{"name": "bouchet", "type": "openai", "baseUrl": base_url, "apiKey": api_key}],
+    "models": [{
+        "id": m,
+        "provider": "bouchet",
+        "name": m,
+        "maxPromptTokens": int(max_prompt),
+        "maxOutputTokens": int(max_output),
+        "capabilities": {"supports": {"vision": True, "toolCalls": True}},
+    } for m in models],
+}
+with open(target, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PY
+        then
+            chmod 0600 "$copilot_providers_tmp" &&
+                mv -f -- "$copilot_providers_tmp" "$copilot_providers_copy" &&
+                copilot_providers_ok=true
+        fi
+        if [[ "$copilot_providers_ok" != true ]]; then
+            [[ -n "$copilot_providers_tmp" ]] && rm -f -- "$copilot_providers_tmp"
+            echo "Warning: could not write ${copilot_providers_copy}; Copilot will run without image input." >&2
+            client_env_opts+=(
+                --env "COPILOT_PROVIDER_TYPE=openai"
+                --env "COPILOT_PROVIDER_BASE_URL=${YCRC_COPILOT_BASE_URL}"
+                --env "COPILOT_PROVIDER_API_KEY=${agent_auth}"
+                --env "COPILOT_MODEL=${agent_model}"
+                --env "COPILOT_PROVIDER_MAX_PROMPT_TOKENS=${YCRC_AGENT_MAX_PROMPT}"
+                --env "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=${YCRC_AGENT_MAX_OUTPUT}"
+            )
+        else
+            bind_opts+=(--bind "${copilot_providers_copy}:/etc/agents/copilot-providers.json:ro")
+            client_env_opts+=(
+                --env "COPILOT_PROVIDERS_CONFIG=/etc/agents/copilot-providers.json"
+                --env "COPILOT_MODEL=bouchet/${agent_model}"
+            )
+        fi
         client_args+=(--disable-builtin-mcps)
         ;;
 esac
