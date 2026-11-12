@@ -369,6 +369,30 @@ declare -A import_record=()
 import_state=""
 kept_paths=()
 
+# Point the symlink LINK at TARGET. Sessions starting at the same moment (for
+# example several right after a version change, or Claude and Codex together)
+# share these directories. "ln -sfn" creates the link directly when it finds
+# none, so two launches that both find it missing race, and the slower one
+# fails with "File exists". Instead, leave a correct link alone, and otherwise
+# make the new link under a temporary name and rename it into place, which
+# replaces any link another launch made meanwhile. The temporary name includes
+# the host, since home directories are shared between nodes. A rename can
+# still fail while another launch is changing the same link, so try again.
+replace_symlink() {
+    local target="$1" link="$2" tmp attempt
+    for attempt in 1 2 3; do
+        [[ -L "$link" && "$(readlink -- "$link")" == "$target" ]] && return 0
+        tmp="$(dirname -- "$link")/.$(basename -- "$link").ycrc-tmp.${HOSTNAME%%.*}.$$.${RANDOM}"
+        if ln -s -- "$target" "$tmp" 2>/dev/null && mv -fT -- "$tmp" "$link" 2>/dev/null; then
+            return 0
+        fi
+        rm -f -- "$tmp"
+    done
+    [[ -L "$link" && "$(readlink -- "$link")" == "$target" ]] && return 0
+    echo "Error: could not link $link to $target" >&2
+    return 1
+}
+
 import_warn() {
     echo "Warning: could not import $1; continuing without it." >&2
 }
@@ -585,7 +609,7 @@ install_instructions() {
         [[ -n "$tmp" ]] && rm -f -- "$tmp"
         import_warn "$personal"
     fi
-    ln -sfn "${site_agents_dir}/AGENTS.md" "$target"
+    replace_symlink "${site_agents_dir}/AGENTS.md" "$target"
 }
 
 # Managed skills keep their names; a user skill of the same name is not
@@ -697,7 +721,7 @@ link_site_skills_non_destructive() {
         skill_name="$(basename -- "$skill_source")"
         target_skill="${target_root}/${skill_name}"
         if [[ -L "$target_skill" || ! -e "$target_skill" ]]; then
-            ln -sfn "$skill_source" "$target_skill"
+            replace_symlink "$skill_source" "$target_skill"
         elif [[ -d "$target_skill" ]]; then
             echo "Error: existing user skill conflicts with administrator skill: $target_skill" >&2
             exit 1
@@ -739,7 +763,7 @@ link_site_subagents_non_destructive() {
         agent_name="$(basename -- "$agent_source")"
         target_agent="${target_root}/${agent_name}"
         if [[ -L "$target_agent" || ! -e "$target_agent" ]]; then
-            ln -sfn "$agent_source" "$target_agent"
+            replace_symlink "$agent_source" "$target_agent"
         fi
     done
 }
@@ -765,8 +789,8 @@ link_pi_subagent_extension() {
     [[ -d "$site_pi_subagents_dir" ]] || return 0
 
     mkdir -p -- "$ext_target" "$agents_target" || return 0
-    ln -sfn "${YCRC_PI_SUBAGENT_EXT_DIR}/index.ts"  "${ext_target}/index.ts"
-    ln -sfn "${YCRC_PI_SUBAGENT_EXT_DIR}/agents.ts" "${ext_target}/agents.ts"
+    replace_symlink "${YCRC_PI_SUBAGENT_EXT_DIR}/index.ts" "${ext_target}/index.ts"
+    replace_symlink "${YCRC_PI_SUBAGENT_EXT_DIR}/agents.ts" "${ext_target}/agents.ts"
 
     # As with the Claude agents, a real user file of the same name is left alone
     # so a user's own definition wins rather than the launcher refusing to start.
@@ -775,7 +799,7 @@ link_pi_subagent_extension() {
         agent_name="$(basename -- "$agent_source")"
         target_agent="${agents_target}/${agent_name}"
         if [[ -L "$target_agent" || ! -e "$target_agent" ]]; then
-            ln -sfn "$agent_source" "$target_agent"
+            replace_symlink "$agent_source" "$target_agent"
         fi
     done
 }
