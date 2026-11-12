@@ -7,11 +7,13 @@
       "models": [
         {
           "id": "ycrc-local",
+          "input": ["text", "image"],
           "contextWindow": 262000,
           "maxTokens": 16384
         },
         {
           "id": "ycrc-local-think",
+          "input": ["text", "image"],
           "contextWindow": 262000,
           "maxTokens": 16384
         }
