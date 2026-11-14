@@ -282,6 +282,19 @@ API_SHARE = min(max(float(os.environ.get("PROXY_API_SHARE", "0.75")), 0.0), 1.0)
 # priority field; scripts using it keep normal priority.
 API_PRIORITY = int(os.environ.get("PROXY_API_PRIORITY", "0"))
 PRIORITY_PATHS = ("/v1/chat/completions", "/v1/completions", "/v1/responses")
+
+# Embedding model on a second vLLM (2026-11). Requests to EMBED_PATHS go to
+# EMBED_UPSTREAM; EMBED_ALIAS names it as MODEL_ALIAS names the chat model, so
+# the model can change without users editing scripts. Off unless
+# PROXY_EMBED_UPSTREAM is set. Embedding requests have their own per-user
+# limit, so a bulk embedding job never takes a user's chat or agent slots.
+EMBED_UPSTREAM = os.environ.get("PROXY_EMBED_UPSTREAM", "").rstrip("/")
+EMBED_ALIAS = os.environ.get("PROXY_EMBED_ALIAS", "ycrc-embed")
+EMBED_PATHS = ("/v1/embeddings",)
+EMBED_USER_MAX_INFLIGHT = int(os.environ.get("PROXY_EMBED_USER_MAX_INFLIGHT", "4"))
+EMBED_BUDGET = int(os.environ.get("PROXY_EMBED_BUDGET", "16"))
+EMBED_UNAVAILABLE = ("The YCRC embedding model is unavailable right now (it may be restarting); "
+                     "please retry in a few minutes. Questions: research.computing@yale.edu")
 if API_ACCESS:
     VALID_AGENTS = VALID_AGENTS | {API_AGENT}
 # Optional link to user documentation for scripted access, added to refusals.
@@ -939,6 +952,9 @@ _user_slots = UserSlots(max(USER_MAX_INFLIGHT, 1), ENGINE_BUDGET,
 # Script requests already running are never interrupted when it shrinks.
 _api_slots = UserSlots(1, 0, USER_MAX_QUEUE, USER_QUEUE_TIMEOUT,
                        cap_fn=lambda: max(1, int(_user_slots.cap() * API_SHARE)))
+# Embedding requests: their own budget, shared by the users embedding at the time.
+_embed_slots = UserSlots(max(EMBED_USER_MAX_INFLIGHT, 1), EMBED_BUDGET,
+                         USER_MAX_QUEUE, USER_QUEUE_TIMEOUT)
 
 
 def limit_key(netid, remote):
@@ -952,7 +968,8 @@ def limit_key(netid, remote):
 
 def busy_response(path, reason, slots=None):
     slots = slots or _user_slots
-    kind = "per user for scripts (<netid>.api)" if slots is _api_slots else "per user"
+    kind = ("per user for scripts (<netid>.api)" if slots is _api_slots
+            else "embedding requests per user" if slots is _embed_slots else "per user")
     msg = (f"Too many concurrent requests for this user ({reason}). This "
            f"shared model currently allows {slots.cap()} at a time {kind}; "
            "please retry shortly.")
@@ -996,7 +1013,79 @@ async def refresh_served_model():
 async def served_model_watcher():
     while True:
         await refresh_served_model()
+        if EMBED_UPSTREAM:
+            await refresh_embed_model()
         await asyncio.sleep(SERVED_MODEL_REFRESH)
+
+
+_embed_model = None    # what the embedding vLLM serves; resolves EMBED_ALIAS
+
+
+def is_embed_path(path):
+    return bool(EMBED_UPSTREAM) and path.startswith(EMBED_PATHS)
+
+
+async def embed_model_list():
+    """The embedding vLLM's /v1/models entries, or [] if it cannot be read."""
+    try:
+        async with _session.get(
+                f"{EMBED_UPSTREAM}/v1/models",
+                headers={"Authorization": f"Bearer {UPSTREAM_KEY}"},
+                timeout=ClientTimeout(total=5)) as r:
+            if r.status == 200:
+                data = (await r.json(content_type=None)).get("data") or []
+                return [m for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)]
+    except Exception:
+        pass
+    return []
+
+
+async def refresh_embed_model():
+    global _embed_model
+    models = await embed_model_list()
+    new = models[0]["id"] if models else None
+    if new != _embed_model:
+        log(f"embedding alias {EMBED_ALIAS!r} -> {new!r}"
+            + ("" if new else " (embedding vLLM unavailable)"))
+        _embed_model = new
+
+
+def rewrite_embed_request(body):
+    """Resolve EMBED_ALIAS; return (body, model-to-account-under). Chat-only
+    rewrites (thinking, effort, priority, claude-* names) do not apply."""
+    try:
+        payload = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body, None
+    if not isinstance(payload, dict):
+        return body, None
+    model = payload.get("model")
+    if EMBED_ALIAS and _embed_model and model in (EMBED_ALIAS, None):
+        payload["model"] = _embed_model
+        return json.dumps(payload).encode(), _embed_model
+    return body, model if isinstance(model, str) else None
+
+
+async def add_embed_models(raw):
+    """Append the embedding model (and EMBED_ALIAS) to a /v1/models answer."""
+    try:
+        extra = await embed_model_list()
+        if not extra:
+            return raw
+        doc = json.loads(raw)
+        if EMBED_ALIAS and not any(m["id"] == EMBED_ALIAS for m in extra):
+            alias = dict(extra[0]); alias["id"] = EMBED_ALIAS; extra.append(alias)
+        doc["data"] = (doc.get("data") or []) + extra
+        return json.dumps(doc).encode()
+    except Exception:
+        return raw
+
+
+def embed_unavailable_response():
+    return web.json_response(
+        {"error": {"message": EMBED_UNAVAILABLE, "type": "service_unavailable",
+                   "code": "embedding_unavailable"}},
+        status=503, headers={"Retry-After": "60"})
 
 
 async def user_limit_logger():
@@ -1385,6 +1474,15 @@ async def handle(request: web.Request):
             key = api_key = None     # limiting must never break inference
     if key is None:
         return await proxy(request)
+    if is_embed_path(request.rel_url.path):
+        try:
+            await _embed_slots.acquire(key)
+        except UserBusy as exc:
+            return busy_response(request.rel_url.path, str(exc), _embed_slots)
+        try:
+            return await proxy(request)
+        finally:
+            _embed_slots.release(key)
     if api_key is not None:
         try:
             await _api_slots.acquire(api_key)
@@ -1407,7 +1505,8 @@ async def handle(request: web.Request):
 async def proxy(request: web.Request):
     global _served_model
     path = request.rel_url.path
-    url = f"{UPSTREAM}{request.rel_url}"
+    embed = is_embed_path(path)
+    url = f"{EMBED_UPSTREAM if embed else UPSTREAM}{request.rel_url}"
     netid, agent = parse_identity(request.headers)
     unattrib = None
     if netid == "unattributed":
@@ -1422,9 +1521,14 @@ async def proxy(request: web.Request):
     accountable = request.method == "POST" and path.startswith("/v1/")
     if accountable:
         body = await request.read()
-        if MODEL_ALIAS and _served_model is None:
-            await refresh_served_model()
-        body, model = rewrite_request(path, body, agent)
+        if embed:
+            if _embed_model is None:
+                await refresh_embed_model()
+            body, model = rewrite_embed_request(body)
+        else:
+            if MODEL_ALIAS and _served_model is None:
+                await refresh_served_model()
+            body, model = rewrite_request(path, body, agent)
     elif request.method not in ("GET", "HEAD", "OPTIONS"):
         body = await request.read()
 
@@ -1447,6 +1551,8 @@ async def proxy(request: web.Request):
             )
     except Exception as exc:
         log(f"upstream error for {request.method} {path}: {exc!r}")
+        if embed:
+            return embed_unavailable_response()
         # vLLM is down, perhaps restarting with a different model: re-learn
         # the alias target once it is back rather than wait for the watcher.
         _served_model = None
@@ -1463,8 +1569,10 @@ async def proxy(request: web.Request):
             raw = await upstream.read()
         finally:
             upstream.release()
-        return web.Response(status=200, body=add_virtual_models(raw),
-                            content_type="application/json")
+        raw = add_virtual_models(raw)
+        if EMBED_UPSTREAM:
+            raw = await add_embed_models(raw)
+        return web.Response(status=200, body=raw, content_type="application/json")
 
     resp_hdrs = {k: v for k, v in upstream.headers.items()
                  if k.lower() not in HOP_BY_HOP}
@@ -1573,6 +1681,9 @@ async def on_startup(app):
     if NODE_CHECK in ("flag", "enforce"):
         app["node_flag_flusher"] = asyncio.create_task(node_flag_flusher())
     log(f"upstream keep-alive {UPSTREAM_KEEPALIVE:g}s, one retry on early disconnect")
+    log(f"embeddings: {EMBED_PATHS[0]} -> {EMBED_UPSTREAM}, alias {EMBED_ALIAS!r}, "
+        f"per-user budget {EMBED_BUDGET} (at least {EMBED_USER_MAX_INFLIGHT} each)"
+        if EMBED_UPSTREAM else "embeddings: off (PROXY_EMBED_UPSTREAM not set)")
     log(f"script priority: {API_PRIORITY} (others 0)" if API_PRIORITY
         else "script priority: off (vLLM needs --scheduling-policy priority first)")
     if MODEL_ALIAS and CLAUDE_MODEL_PREFIX:
