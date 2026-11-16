@@ -234,7 +234,11 @@ UPSTREAM_KEEPALIVE = float(os.environ.get("PROXY_UPSTREAM_KEEPALIVE", "2"))
 # /model; vLLM answers 404. For the claude agent only, those names are served
 # by the alias target. Set empty to disable.
 CLAUDE_MODEL_PREFIX = os.environ.get("PROXY_CLAUDE_MODEL_PREFIX", "claude-")
-CLAUDE_MODEL_AGENTS = frozenset(("claude",))
+# Codex does the same with OpenAI names (gpt-6.1-sol, gpt-6-astra: 21 404s from
+# a new user's first session, 2026-11-15). For the codex agent only.
+CODEX_MODEL_PREFIX = os.environ.get("PROXY_CODEX_MODEL_PREFIX", "gpt-")
+AGENT_MODEL_PREFIXES = {a: p for a, p in (("claude", CLAUDE_MODEL_PREFIX),
+                                          ("codex", CODEX_MODEL_PREFIX)) if p}
 
 # Hop-by-hop headers must not be forwarded in either direction.
 HOP_BY_HOP = frozenset((
@@ -681,9 +685,9 @@ def rewrite_request(path, body, agent=None):
     else:
         think_requested = False
 
-    if (MODEL_ALIAS and CLAUDE_MODEL_PREFIX and agent in CLAUDE_MODEL_AGENTS
-            and isinstance(payload.get("model"), str)
-            and payload["model"].startswith(CLAUDE_MODEL_PREFIX)):
+    prefix = AGENT_MODEL_PREFIXES.get(agent)
+    if (MODEL_ALIAS and prefix and isinstance(payload.get("model"), str)
+            and payload["model"].startswith(prefix)):
         payload["model"] = MODEL_ALIAS
     if MODEL_ALIAS and _served_model and payload.get("model") == MODEL_ALIAS:
         payload["model"] = _served_model
@@ -1686,8 +1690,9 @@ async def on_startup(app):
         if EMBED_UPSTREAM else "embeddings: off (PROXY_EMBED_UPSTREAM not set)")
     log(f"script priority: {API_PRIORITY} (others 0)" if API_PRIORITY
         else "script priority: off (vLLM needs --scheduling-policy priority first)")
-    if MODEL_ALIAS and CLAUDE_MODEL_PREFIX:
-        log(f"{CLAUDE_MODEL_PREFIX}* models from {sorted(CLAUDE_MODEL_AGENTS)} -> {MODEL_ALIAS!r}")
+    if MODEL_ALIAS and AGENT_MODEL_PREFIXES:
+        log("own-default model names -> " + repr(MODEL_ALIAS) + ": "
+            + ", ".join(f"{p}* from {a}" for a, p in sorted(AGENT_MODEL_PREFIXES.items())))
     if MODEL_ALIAS:
         app["served_model_watcher"] = asyncio.create_task(served_model_watcher())
     if USER_MAX_INFLIGHT > 0:
