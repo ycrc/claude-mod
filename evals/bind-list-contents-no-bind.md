@@ -1,4 +1,5 @@
 ---
+expectation: Should not see any files
 setup: mkdir -p ~/scratch/test-bind && touch ~/scratch/test-bind/myfile.txt
 cleanup: rm -rf ~/scratch/test-bind
 ---
