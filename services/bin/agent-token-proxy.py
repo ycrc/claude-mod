@@ -355,6 +355,13 @@ DATED_TOOL_RE = re.compile(r"_\d{8}$")
 USAGE_RE = re.compile(
     r'"(prompt_tokens|completion_tokens|input_tokens|output_tokens)"\s*:\s*(\d+)'
 )
+# A reply cut off at the client's output limit, in each wire format:
+# chat completions, Anthropic messages, Responses. Inside generated text the
+# quotes are escaped (\"), so model output cannot match.
+LENGTH_RE = re.compile(
+    r'"finish_reason"\s*:\s*"length"|"stop_reason"\s*:\s*"max_tokens"'
+    r'|"reason"\s*:\s*"max_output_tokens"'
+)
 PROMPT_KEYS = ("prompt_tokens", "input_tokens")
 COMPLETION_KEYS = ("completion_tokens", "output_tokens")
 
@@ -533,6 +540,18 @@ def scan_usage(text, found):
             continue
         if n > found.get(key, -1):
             found[key] = n
+
+
+def requested_limit(body):
+    """The output limit the client asked for, or None if it set none."""
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return None
+    for key in ("max_completion_tokens", "max_tokens", "max_output_tokens"):
+        if isinstance(payload.get(key), int):
+            return payload[key]
+    return None
 
 
 def totals(found):
@@ -1587,6 +1606,7 @@ async def proxy(request: web.Request):
     found = {}
     carry = ""
     streamed = False
+    hit_limit = False
 
     def account_abort():
         # Client hung up: record what was seen. The elapsed time is not a
@@ -1635,6 +1655,8 @@ async def proxy(request: web.Request):
             try:
                 text = carry + chunk.decode("utf-8", errors="ignore")
                 scan_usage(text, found)
+                if not hit_limit and LENGTH_RE.search(text):
+                    hit_limit = True
                 carry = text[-SCAN_CARRY:]
             except Exception:
                 carry = ""
@@ -1659,6 +1681,9 @@ async def proxy(request: web.Request):
         p, c = totals(found)
         record_later(netid, agent, model, p, c, upstream.status, streamed,
                      ttft=ttft, duration=time.monotonic() - t0)
+        if hit_limit:
+            log(f"output limit reached {path} {netid}/{agent} model={model} "
+                f"limit={requested_limit(body)} prompt={p} completion={c}")
         if unattrib:
             note_unattributed(unattrib[0], unattrib[1], path, model, unattrib[2], p, c)
     return out
